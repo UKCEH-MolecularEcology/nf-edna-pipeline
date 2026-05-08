@@ -1,0 +1,36 @@
+# Nextflow work directory and cache
+work/
+.nextflow/
+.nextflow.log*
+.nextflow.pid
+
+# Pipeline outputs (don't commit results)
+results/
+test_results/
+full_ecology_results/
+databases/
+
+# Singularity image cache
+singularity/
+*.sif
+
+# Conda envs
+conda/
+*.conda
+
+# Editor and OS
+.DS_Store
+.idea/
+*.swp
+*.swo
+*~
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+nf-*.txt
+
+# Temporary files
+*.tmp
+*.bak

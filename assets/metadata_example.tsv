@@ -1,0 +1,5 @@
+sample_id	habitat	season	pH	conductivity_uS	dissolved_O2_mg_L	latitude	longitude	replicate
+POND_A_S1	pond	summer	7.2	312	8.1	51.5074	-0.1278	1
+POND_B_S2	pond	summer	7.4	298	7.9	51.5078	-0.1260	2
+RIVER_C_S3	river	summer	7.8	485	9.2	51.4500	-2.5833	1
+SOIL_D_S4	soil	summer	6.1	NA	NA	51.4900	-0.1000	1
