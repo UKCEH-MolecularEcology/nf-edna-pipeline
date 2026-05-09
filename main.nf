@@ -17,6 +17,7 @@ include { ECOLOGICAL_ANALYSIS      } from './subworkflows/local/ecological_analy
 include { FULL_ECOLOGICAL_ANALYSIS } from './subworkflows/local/full_ecological_analysis'
 include { MERGE_ASV_TABLES         } from './modules/local/merge_asvtables/main'
 include { MULTIQC                  } from './modules/local/multiqc/main'
+include { SETUP_DATABASES          } from './modules/local/setup_databases/main'
 
 // ─── Validate parameters ────────────────────────────────────────────────────
 
@@ -175,11 +176,31 @@ workflow {
     ch_reads_filtered = ch_reads
         .filter { meta, reads -> markers_list.contains(meta.marker) }
 
-    // ── QC ────────────────────────────────────────────────────────────────
+    // ── Database setup (auto-download if any are missing) ─────────────────
+    def missing_db_markers = markers_list.findAll { !file(params.databases[it].path).exists() }
+
+    if (missing_db_markers) {
+        if (params.skip_db_download) {
+            error """\
+                Missing databases for: ${missing_db_markers.join(', ')}
+                Run:  bash ${projectDir}/assets/download_databases.sh ${projectDir}/databases/ ${missing_db_markers.join(' ')}
+                Or omit --skip_db_download to let the pipeline download them automatically.
+                ITS (UNITE) always requires a manual download — see assets/download_databases.sh.
+                """.stripIndent()
+        }
+        log.info "Auto-downloading missing databases for: ${missing_db_markers.join(', ')}"
+        SETUP_DATABASES(Channel.value(missing_db_markers))
+    }
+
+    // QC runs immediately; processing is gated on database readiness
     AMPLICON_QC(ch_reads_filtered)
 
+    ch_proc_input = missing_db_markers
+        ? ch_reads_filtered.combine(SETUP_DATABASES.out.ready).map { meta, reads, _ -> [meta, reads] }
+        : ch_reads_filtered
+
     // ── Per-marker processing ─────────────────────────────────────────────
-    ch_by_marker = ch_reads_filtered
+    ch_by_marker = ch_proc_input
         .branch {
             s16:  it[0].marker == '16S'
             s18:  it[0].marker == '18S'
@@ -254,16 +275,6 @@ def loadMarkerParams(marker) {
     if (!primers) error "No primer configuration found for marker: ${marker}"
     if (!db)      error "No database configuration found for marker: ${marker}"
 
-    def tax_db_file = file(db.path)
-    if (!tax_db_file.exists()) {
-        error """\
-            Database not found for ${marker}: ${db.path}
-            Run the download script first:
-              bash ${projectDir}/assets/download_databases.sh ${projectDir}/databases/
-            ITS (UNITE) requires a manual download — see assets/download_databases.sh for details.
-            """.stripIndent()
-    }
-
     return [
         fwd_primer:    primers.fwd,
         rev_primer:    primers.rev,
@@ -273,7 +284,7 @@ def loadMarkerParams(marker) {
         trunc_len_r:   primers.trunc_len_r ?: 0,
         max_ee_f:      primers.max_ee_f ?: 2,
         max_ee_r:      primers.max_ee_r ?: 2,
-        tax_db:        tax_db_file,
+        tax_db:        file(db.path),
         tax_db_type:   db.type,
         tax_method:    db.method
     ]
