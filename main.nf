@@ -18,18 +18,12 @@ include { FULL_ECOLOGICAL_ANALYSIS } from './subworkflows/local/full_ecological_
 include { MERGE_ASV_TABLES         } from './modules/local/merge_asvtables/main'
 include { MULTIQC                  } from './modules/local/multiqc/main'
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-def valid_markers = ['16S', '18S', 'ITS', 'CO1', '12S', 'RBCL']
-
-def marker_aliases = [
-    '16S': '16S', '18S': '18S', 'ITS': 'ITS', 'ITS1': 'ITS', 'ITS2': 'ITS',
-    'CO1': 'CO1', 'COI': 'CO1', '12S': '12S', 'RBCL': 'RBCL'
-]
-
 // ─── Validate parameters ────────────────────────────────────────────────────
 
 def checkParams() {
+    // Defined inside the function so it is in scope for DSL2 method compilation
+    def valid_markers = ['16S', '18S', 'ITS', 'CO1', '12S', 'RBCL']
+
     if (!params.input && !params.fastq_dir) {
         error "Provide either --input (samplesheet CSV) or --fastq_dir (FASTQ directory)"
     }
@@ -71,6 +65,12 @@ def parseSamplesheet(csv) {
 // ─── Auto-detect samples from FASTQ directory ───────────────────────────────
 
 def parseFastqDir(fastq_dir) {
+    // Defined inside the function so it is in scope for DSL2 method compilation
+    def marker_aliases = [
+        '16S': '16S', '18S': '18S', 'ITS': 'ITS', 'ITS1': 'ITS', 'ITS2': 'ITS',
+        'CO1': 'CO1', 'COI': 'CO1', '12S': '12S', 'RBCL': 'RBCL'
+    ]
+
     def dir = file(fastq_dir)
     if (!dir.isDirectory()) error "--fastq_dir is not a directory: ${fastq_dir}"
 
