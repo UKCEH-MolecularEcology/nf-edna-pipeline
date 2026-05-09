@@ -25,16 +25,20 @@ process ECOLOGY_BETA {
     r_lib <- file.path(getwd(), ".r_libs")
     dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
     .libPaths(c(r_lib, .libPaths()))
-    install.packages("BiocManager", repos="https://cloud.r-project.org",
-                     quiet=TRUE, lib=r_lib)
+
+    r_ver <- numeric_version(paste(R.version$major, R.version$minor, sep="."))
+    bioc_ver <- if (r_ver >= "4.5") "3.22" else if (r_ver >= "4.4") "3.20" else if (r_ver >= "4.3") "3.18" else "3.16"
+    options(repos = c(
+        BioCsoft = paste0("https://bioconductor.org/packages/", bioc_ver, "/bioc"),
+        BioCann  = paste0("https://bioconductor.org/packages/", bioc_ver, "/data/annotation"),
+        CRAN     = "https://cloud.r-project.org"
+    ))
+
 
     required <- c("phyloseq", "vegan", "ggplot2", "dplyr", "tidyr")
     for (pkg in required) {
         if (!requireNamespace(pkg, quietly=TRUE)) {
-            if (pkg %in% c("phyloseq"))
-                BiocManager::install(pkg, update=FALSE, ask=FALSE)
-            else
-                install.packages(pkg, repos="https://cloud.r-project.org")
+            install.packages(pkg)
         }
     }
     suppressPackageStartupMessages({
