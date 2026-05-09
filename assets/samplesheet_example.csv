@@ -8,4 +8,5 @@ RIVER_C_S3,/path/to/RIVER_C_S3_R1_001.fastq.gz,/path/to/RIVER_C_S3_R2_001.fastq.
 RIVER_C_S3,/path/to/RIVER_C_S3_R1_001.fastq.gz,/path/to/RIVER_C_S3_R2_001.fastq.gz,12S,run2
 SOIL_D_S4,/path/to/SOIL_D_S4_R1_001.fastq.gz,/path/to/SOIL_D_S4_R2_001.fastq.gz,16S,run2
 SOIL_D_S4,/path/to/SOIL_D_S4_R1_001.fastq.gz,/path/to/SOIL_D_S4_R2_001.fastq.gz,ITS,run2
+MEADOW_E_S5,/path/to/MEADOW_E_S5_R1_001.fastq.gz,/path/to/MEADOW_E_S5_R2_001.fastq.gz,RBCL,run2
 NEG_CTRL,/path/to/NEG_CTRL_R1_001.fastq.gz,/path/to/NEG_CTRL_R2_001.fastq.gz,16S,run1

@@ -39,6 +39,16 @@ wget -nc "https://www.reference-midori.info/download/Databases/GenBank262_2024-0
     -O MIDORI2_LONGEST_NUC_GB262_12S_DADA2.fasta.gz || \
     echo "  Manual download from: https://www.reference-midori.info/download.e.html"
 
+# ── rbcL: rbcLClassifier v1 (RDP Classifier trained on NCBI plant sequences) ─
+# Source: https://github.com/terrimporter/rbcLClassifier
+# Citable archive: https://doi.org/10.5281/zenodo.4741459
+echo "[rbcL] Downloading rbcLClassifier v1 trained model (NCBI-sourced)..."
+wget -nc "https://github.com/terrimporter/rbcLClassifier/releases/download/v1/rbcLv1_trained.tar.gz"
+echo "[rbcL] Extracting rbcLClassifier..."
+tar -xzf rbcLv1_trained.tar.gz
+echo "[rbcL] Trained model extracted to: rbcLv1_trained/mydata_trained/"
+echo "  Properties file: rbcLv1_trained/mydata_trained/rRNAClassifier.properties"
+
 echo ""
 echo "Database download complete!"
 echo "Update database paths in nextflow.config if filenames differ."

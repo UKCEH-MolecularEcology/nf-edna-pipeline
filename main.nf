@@ -3,7 +3,7 @@ nextflow.enable.dsl = 2
 
 /*
  * eDNA Metabarcoding Pipeline
- * Supports: 16S, 18S, ITS, CO1, 12S
+ * Supports: 16S, 18S, ITS, CO1, 12S, RBCL
  * Raw reads → QC → Primer trimming → DADA2 denoising → Taxonomy → Ecology
  */
 
@@ -16,7 +16,7 @@ include { MULTIQC                  } from './modules/local/multiqc/main'
 
 // ─── Validate parameters ────────────────────────────────────────────────────
 
-def valid_markers = ['16S', '18S', 'ITS', 'CO1', '12S']
+def valid_markers = ['16S', '18S', 'ITS', 'CO1', '12S', 'RBCL']
 
 def checkParams() {
     if (!params.input) {
@@ -80,6 +80,7 @@ workflow {
             its:  it[0].marker == 'ITS'
             co1:  it[0].marker == 'CO1'
             s12:  it[0].marker == '12S'
+            rbcl: it[0].marker == 'RBCL'
         }
 
     ch_asv_tables    = Channel.empty()
@@ -91,7 +92,8 @@ workflow {
                             : marker == '18S'  ? ch_by_marker.s18
                             : marker == 'ITS'  ? ch_by_marker.its
                             : marker == 'CO1'  ? ch_by_marker.co1
-                            : ch_by_marker.s12
+                            : marker == '12S'  ? ch_by_marker.s12
+                            : ch_by_marker.rbcl
 
         def marker_params = loadMarkerParams(marker)
 

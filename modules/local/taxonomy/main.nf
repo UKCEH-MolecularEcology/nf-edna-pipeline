@@ -3,9 +3,11 @@ process TAXONOMY {
     label 'process_high'
 
     container {
-        db_type == 'blast'
+        tax_method == 'blast'
             ? 'biocontainers/blast:2.14.1--pl5321h6f7f691_0'
-            : 'biocontainers/bioconductor-dada2:1.30.0--r43hf17093f_0'
+            : tax_method == 'rdp'
+                ? 'quay.io/biocontainers/rdp-classifier:2.13--hdfd78af_1'
+                : 'biocontainers/bioconductor-dada2:1.30.0--r43hf17093f_0'
     }
 
     publishDir "${params.outdir}/taxonomy/${marker}", mode: 'copy'
@@ -13,8 +15,8 @@ process TAXONOMY {
     input:
     tuple val(meta), path(fasta)
     path  tax_db
-    val   db_type    // silva | unite | midori | pr2
-    val   tax_method // dada2 | blast
+    val   db_type    // silva | unite | midori | pr2 | rdp
+    val   tax_method // dada2 | blast | rdp
     val   marker
 
     output:
@@ -24,7 +26,27 @@ process TAXONOMY {
     script:
     def prefix = "${meta.id}_${marker}"
 
-    if (tax_method == 'blast') {
+    if (tax_method == 'rdp') {
+        def rdp_xmx  = params.rdp_mem       ?: '8g'
+        def rdp_boot = params.rdp_bootstrap  ?: 0.70
+
+        """
+        rdp_classifier -Xmx${rdp_xmx} classify \\
+            -t ${tax_db}/rRNAClassifier.properties \\
+            -f fixrank \\
+            -o ${prefix}_rdp_raw.txt \\
+            ${fasta}
+
+        parse_rdp.py ${prefix}_rdp_raw.txt ${prefix}.taxonomy.tsv ${rdp_boot}
+
+        cat <<-END_VERSIONS > versions.yml
+        "${task.process}":
+            rdp_classifier: \$(rdp_classifier --version 2>&1 | grep -oP '\\d+\\.\\d+' | head -1 || echo "2.13")
+            python: \$(python3 --version | cut -d' ' -f2)
+        END_VERSIONS
+        """
+
+    } else if (tax_method == 'blast') {
         """
         # BLAST against curated database (pre-formatted)
         blastn \\

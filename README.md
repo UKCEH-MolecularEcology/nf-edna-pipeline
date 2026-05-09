@@ -1,6 +1,6 @@
 # nf-edna-pipeline
 
-A Nextflow DSL2 pipeline for **multi-marker eDNA metabarcoding** — from raw paired-end reads to full ecological analysis. Supports **16S, 18S, ITS, CO1, and 12S** primer sets in a single run.
+A Nextflow DSL2 pipeline for **multi-marker eDNA metabarcoding** — from raw paired-end reads to full ecological analysis. Supports **16S, 18S, ITS, CO1, 12S, and rbcL** primer sets in a single run.
 
 ---
 
@@ -12,6 +12,7 @@ A Nextflow DSL2 pipeline for **multi-marker eDNA metabarcoding** — from raw pa
 - [Installation](#installation)
 - [Database setup](#database-setup)
 - [Quick start](#quick-start)
+- [Samplesheet generation](#samplesheet-generation)
 - [Samplesheet format](#samplesheet-format)
 - [Metadata format](#metadata-format)
 - [Parameters](#parameters)
@@ -28,7 +29,7 @@ A Nextflow DSL2 pipeline for **multi-marker eDNA metabarcoding** — from raw pa
 
 This pipeline processes raw Illumina amplicon reads through quality control, primer trimming, DADA2-based denoising, chimera removal, and taxonomy assignment — then feeds the resulting ASV tables into a comprehensive ecological analysis suite.
 
-Multiple markers can be processed in a single run. The same sample can appear in the samplesheet multiple times with different marker assignments (e.g. the same DNA extract amplified with 16S and ITS primers).
+Multiple markers can be processed in a single run. The same sample can appear in the samplesheet multiple times with different marker assignments (e.g. the same DNA extract amplified with 16S and rbcL primers).
 
 ---
 
@@ -47,11 +48,12 @@ Raw reads (FASTQ)
 ├── Merge ASV tables     — cross-sample merge + final bimera removal
 │
 ├── Taxonomy assignment  (marker-specific databases)
-│   ├── 16S  →  SILVA 138.1
-│   ├── 18S  →  PR2 v5.0
-│   ├── ITS  →  UNITE v10
-│   ├── CO1  →  MIDORI2 (GB262)
-│   └── 12S  →  MIDORI2 (GB262)
+│   ├── 16S   →  SILVA 138.1            (DADA2 naive Bayesian)
+│   ├── 18S   →  PR2 v5.0              (DADA2 naive Bayesian)
+│   ├── ITS   →  UNITE v10             (DADA2 naive Bayesian)
+│   ├── CO1   →  MIDORI2 (GB262)       (DADA2 naive Bayesian)
+│   ├── 12S   →  MIDORI2 (GB262)       (DADA2 naive Bayesian)
+│   └── rbcL  →  rbcLClassifier v1     (RDP Classifier, NCBI-trained)
 │
 ├── Basic ecology        — diversity, PCoA, NMDS, barplots
 │
@@ -76,8 +78,9 @@ Raw reads (FASTQ)
 | [Nextflow](https://nextflow.io) | 23.04.0 | `curl -s get.nextflow.io \| bash` |
 | [Docker](https://docs.docker.com/get-docker/) **or** [Singularity](https://sylabs.io/guides/3.0/user-guide/) | Docker ≥ 20 / Singularity ≥ 3.7 | One or the other required for containers |
 | Java | 11–21 | Required by Nextflow |
+| Python | 3.8+ | Required for `bin/make_samplesheet.py` (standard library only) |
 
-All bioinformatics tools (FastQC, Cutadapt, DADA2, VSEARCH, etc.) are pulled automatically as containers — no manual tool installation is needed.
+All bioinformatics tools (FastQC, Cutadapt, DADA2, VSEARCH, RDP Classifier, etc.) are pulled automatically as containers — no manual tool installation is needed.
 
 ---
 
@@ -132,6 +135,7 @@ This downloads:
 - **SILVA 138.1** (16S) from Zenodo
 - **PR2 v5.0** (18S) from GitHub
 - **MIDORI2 GB262** (CO1, 12S) from the MIDORI website
+- **rbcLClassifier v1** (rbcL) from GitHub — RDP Classifier trained on NCBI plant rbcL sequences (Kress & Porter 2020); citable archive at [doi:10.5281/zenodo.4741459](https://doi.org/10.5281/zenodo.4741459)
 
 > **UNITE (ITS)** requires manual download due to licensing. Go to [unite.ut.ee/repository.php](https://unite.ut.ee/repository.php), download the *General FASTA release — developer s_all version*, and place it in `databases/`. Update the path in `nextflow.config` accordingly.
 
@@ -139,11 +143,12 @@ After downloading, verify the paths in `nextflow.config` under `params.databases
 
 ```groovy
 databases {
-    '16S' { path = "${projectDir}/databases/silva_nr99_v138.1_train_set.fa.gz" }
-    '18S' { path = "${projectDir}/databases/pr2_version_5.0.0_SSU_dada2.fasta.gz" }
-    'ITS' { path = "${projectDir}/databases/sh_general_release_dynamic_s_all_19.02.2024.fasta.gz" }
-    'CO1' { path = "${projectDir}/databases/MIDORI2_LONGEST_NUC_GB262_CO1_DADA2.fasta.gz" }
-    '12S' { path = "${projectDir}/databases/MIDORI2_LONGEST_NUC_GB262_12S_DADA2.fasta.gz" }
+    '16S'  { path = "${projectDir}/databases/silva_nr99_v138.1_train_set.fa.gz" }
+    '18S'  { path = "${projectDir}/databases/pr2_version_5.0.0_SSU_dada2.fasta.gz" }
+    'ITS'  { path = "${projectDir}/databases/sh_general_release_dynamic_s_all_19.02.2024.fasta.gz" }
+    'CO1'  { path = "${projectDir}/databases/MIDORI2_LONGEST_NUC_GB262_CO1_DADA2.fasta.gz" }
+    '12S'  { path = "${projectDir}/databases/MIDORI2_LONGEST_NUC_GB262_12S_DADA2.fasta.gz" }
+    'RBCL' { path = "${projectDir}/databases/rbcLv1_trained/mydata_trained" }
 }
 ```
 
@@ -159,10 +164,10 @@ nextflow run main.nf \
     --outdir results/ \
     -profile docker
 
-# Run all five markers on a SLURM cluster with Singularity
+# Run all six markers on a SLURM cluster with Singularity
 nextflow run main.nf \
     --input samplesheet.csv \
-    --markers 16S,18S,ITS,CO1,12S \
+    --markers 16S,18S,ITS,CO1,12S,RBCL \
     --metadata metadata.tsv \
     --ecology_group_var habitat \
     --outdir results/ \
@@ -171,6 +176,53 @@ nextflow run main.nf \
 ```
 
 Use `-resume` to restart from the last successful step after a failure or parameter change.
+
+---
+
+## Samplesheet generation
+
+A helper script builds the samplesheet CSV automatically from a directory of FASTQ files and optionally merges it with a metadata file for ecology analysis.
+
+**Expected filename format** (standard Illumina output):
+```
+{sample_id}-{marker}_{S-index}_{R1|R2}_001.fastq.gz
+```
+
+**Examples:**
+```
+H4D-EA100_2024-18S_S244_R1_001.fastq.gz
+K9G-EA71_2024-rbcL_S503_R1_001.fastq.gz
+P8B-Blank2-SW-rbcL_S762_R2_001.fastq.gz
+```
+
+The script detects the marker from the last `-`-delimited token before the Illumina suffix and recognises: `16S`, `18S`, `ITS`, `CO1`/`COI`, `12S`, `RBCL`.
+
+**Generate samplesheet only:**
+```bash
+python bin/make_samplesheet.py /path/to/fastqs/ -o samplesheet.csv
+```
+
+**Generate samplesheet and filter metadata to matched samples:**
+```bash
+python bin/make_samplesheet.py /path/to/fastqs/ \
+    -o samplesheet.csv \
+    --metadata metadata.tsv
+```
+
+This produces:
+- `samplesheet.csv` — ready to pass to `--input`
+- `samplesheet_metadata.tsv` — filtered metadata containing only samples found in the FASTQ directory, ready to pass to `--metadata`
+- A warning for any samples present in one file but missing from the other
+- A ready-to-run `nextflow run` command printed to stdout
+
+**Options:**
+```
+positional:  fastq_dir          Directory containing *.fastq.gz files
+-o/--output  samplesheet.csv    Output CSV path (default: samplesheet.csv)
+-m/--metadata                   Metadata TSV/CSV to merge
+--metadata-out                  Custom path for filtered metadata output
+--absolute                      Write absolute FASTQ paths
+```
 
 ---
 
@@ -183,7 +235,7 @@ Create a comma-separated file with these columns:
 | `sample` | Yes | Sample identifier — no spaces or special characters |
 | `fastq_1` | Yes | Absolute path to R1 FASTQ file (gzipped) |
 | `fastq_2` | No | Absolute path to R2 FASTQ file (gzipped). Omit for single-end |
-| `marker` | Yes | One of: `16S`, `18S`, `ITS`, `CO1`, `12S` |
+| `marker` | Yes | One of: `16S`, `18S`, `ITS`, `CO1`, `12S`, `RBCL` |
 | `run` | No | Sequencing run ID. Used to group error-model learning. Defaults to `run1` |
 
 **Example (`samplesheet.csv`):**
@@ -191,10 +243,10 @@ Create a comma-separated file with these columns:
 ```csv
 sample,fastq_1,fastq_2,marker,run
 POND_A,/data/POND_A_R1.fastq.gz,/data/POND_A_R2.fastq.gz,16S,run1
-POND_A,/data/POND_A_R1.fastq.gz,/data/POND_A_R2.fastq.gz,ITS,run1
+POND_A,/data/POND_A_R1.fastq.gz,/data/POND_A_R2.fastq.gz,RBCL,run1
 RIVER_B,/data/RIVER_B_R1.fastq.gz,/data/RIVER_B_R2.fastq.gz,16S,run1
 RIVER_B,/data/RIVER_B_R1.fastq.gz,/data/RIVER_B_R2.fastq.gz,CO1,run1
-SOIL_C,/data/SOIL_C_R1.fastq.gz,/data/SOIL_C_R2.fastq.gz,ITS,run2
+MEADOW_C,/data/MEADOW_C_R1.fastq.gz,/data/MEADOW_C_R2.fastq.gz,RBCL,run2
 NEG_CTRL,/data/NEG_R1.fastq.gz,/data/NEG_R2.fastq.gz,16S,run1
 ```
 
@@ -214,11 +266,13 @@ The first column must be named `sample_id` and match the `sample` values in the 
 sample_id	habitat	season	pH	conductivity_uS	dissolved_O2_mg_L
 POND_A	pond	summer	7.2	312	8.1
 RIVER_B	river	summer	7.8	485	9.2
-SOIL_C	soil	summer	6.1	NA	NA
+MEADOW_C	meadow	summer	6.5	NA	NA
 ```
 
 - **Categorical columns** — used for PERMANOVA grouping, ANOSIM, IndVal, boxplot colouring, differential abundance
 - **Numeric columns** — used for RDA/CCA environmental fitting, Mantel tests, variance partitioning, envfit vectors, alpha diversity correlations
+
+Use `bin/make_samplesheet.py --metadata` to automatically filter your metadata file to only the samples present in your FASTQ directory before passing it to the pipeline.
 
 ---
 
@@ -241,19 +295,23 @@ SOIL_C	soil	summer	6.1	NA	NA
 | `--dada2_pool` | `false` | Pooling strategy: `false` (independent), `true` (full pooling), or `pseudo` (recommended for rare species detection) |
 | `--dada2_chimera` | `consensus` | Chimera removal method for merged table: `consensus`, `pooled`, or `per-sample` |
 
+### RDP Classifier parameters (rbcL)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--rdp_mem` | `8g` | JVM heap size for RDP Classifier (e.g. `8g`, `16g`) |
+| `--rdp_bootstrap` | `0.70` | Minimum bootstrap confidence (0–1) to retain a rank assignment. 0.70 gives ~90% accuracy at genus level for ≥400 bp reads |
+
 ### Primer parameters
 
-Default primer sequences are defined in `nextflow.config` under `params.primers` for all five markers. Override any primer or quality parameter at the command line:
+Default primer sequences are defined in `nextflow.config` under `params.primers` for all six markers. Override any primer or quality parameter at the command line:
 
 ```bash
 nextflow run main.nf \
-    --markers 16S \
-    --primers.16S.fwd GTGYCAGCMGCCGCGGTAA \
-    --primers.16S.rev GGACTACNVGGGTWTCTAAT \
-    --primers.16S.trunc_len_f 240 \
-    --primers.16S.trunc_len_r 180 \
-    --primers.16S.max_ee_f 2 \
-    --primers.16S.max_ee_r 2 \
+    --markers RBCL \
+    --primers.RBCL.fwd ATGTCACCACAAACAGAGACTAAAGC \
+    --primers.RBCL.rev GTAAAATCAAGTCCACCRCG \
+    --primers.RBCL.min_length 400 \
     ...
 ```
 
@@ -297,7 +355,7 @@ Select a profile with `-profile <name>`. Combine multiple profiles with commas (
 ```bash
 nextflow run main.nf \
     --input samplesheet.csv \
-    --markers 16S,ITS \
+    --markers 16S,RBCL \
     --metadata metadata.tsv \
     --outdir results/ \
     -profile slurm,singularity \
@@ -316,7 +374,7 @@ The full ecology suite runs automatically after the main pipeline when `--run_fu
 # Point at a previous results directory
 nextflow run ecology_pipeline.nf \
     --results_dir results/ \
-    --markers 16S,ITS \
+    --markers 16S,RBCL \
     --metadata metadata.tsv \
     --ecology_group_var habitat \
     --outdir full_ecology/ \
@@ -324,9 +382,9 @@ nextflow run ecology_pipeline.nf \
 
 # Or supply files directly (single marker)
 nextflow run ecology_pipeline.nf \
-    --asv_table results/asv_tables/16S/16S.merged_asv_table.tsv \
-    --taxonomy  results/taxonomy/16S/SAMPLE_16S.taxonomy.tsv \
-    --marker    16S \
+    --asv_table results/asv_tables/RBCL/RBCL.merged_asv_table.tsv \
+    --taxonomy  results/taxonomy/RBCL/SAMPLE_RBCL.taxonomy.tsv \
+    --marker    RBCL \
     --metadata  metadata.tsv \
     --outdir    full_ecology/ \
     -profile docker
@@ -395,6 +453,7 @@ Default primers used by the pipeline. To use different primers, override `params
 | ITS | ITS1F: `CTTGGTCATTTAGAGGAAGTAA` | ITS2: `GCTGCGTTCTTCATCGATGC` | ITS1 | 200–500 bp |
 | CO1 | mlCOIintF (Leray): `GGWACWGGWTGAACWGTWTAYCCYCC` | jgHCO2198: `TAIACYTCIGGRTGICCRAARAAYCA` | mtCO1 | ~313 bp |
 | 12S | MiFish-U-F: `GTCGGTAAAACTCGTGCCAGC` | MiFish-U-R: `CATAGTGGGGTATCTAATCCCAGTTTG` | 12S rRNA | 163–185 bp |
+| rbcL | rbcLa-F (Kress & Erickson 2007): `ATGTCACCACAAACAGAGACTAAAGC` | rbcLa-R: `GTAAAATCAAGTCCACCRCG` | rbcLa | ~550 bp |
 
 ---
 
@@ -406,8 +465,14 @@ Default primers used by the pipeline. To use different primers, override `params
 **DADA2 error model produces warnings about insufficient reads**
 : Each sequencing run needs ≥ ~100,000 reads across all samples to learn a reliable error model. If you have very few samples, try `--dada2_pool pseudo`.
 
+**rbcL classification is slow or runs out of memory**
+: Increase `--rdp_mem` (e.g. `--rdp_mem 16g`). The RDP Classifier loads the entire trained model into JVM heap; 8 GB is usually sufficient for the rbcLClassifier v1.
+
+**rbcL taxonomy assignments are mostly blank**
+: Lower `--rdp_bootstrap` (e.g. `0.50`). The default 0.70 is conservative; lower values retain more assignments at the cost of reduced accuracy at finer ranks. Assignments are only possible for reads ≥ 400 bp after trimming.
+
 **Taxonomy database not found**
-: Check the path in `nextflow.config` matches the exact filename downloaded. Paths support `${projectDir}` as a shorthand for the pipeline directory.
+: Check the path in `nextflow.config` matches the exact filename/directory downloaded. Paths support `${projectDir}` as a shorthand for the pipeline directory. For rbcL, the path should point to the `mydata_trained/` directory extracted from `rbcLv1_trained.tar.gz`.
 
 **OutOfMemoryError in DADA2 or taxonomy**
 : Increase `--max_memory` (e.g. `--max_memory 256.GB`) or set `process.memory` directly in a custom config.
@@ -432,7 +497,10 @@ If you use this pipeline in your research, please cite:
 - **SILVA:** Quast C *et al.* (2013) The SILVA ribosomal RNA gene database project. *Nucleic Acids Research* 41:D590–D596. https://doi.org/10.1093/nar/gks1219
 - **PR2:** Guillou L *et al.* (2013) The Protist Ribosomal Reference database (PR2). *Nucleic Acids Research* 41:D597–D604. https://doi.org/10.1093/nar/gks1160
 - **UNITE:** UNITE Community (2023) UNITE general FASTA release. https://doi.org/10.15156/BIO/2938065
-- **MIDORI2:** Machida RJ *et al.* (2017) MIDORI series of curated sequence reference databases. *Scientific Data* 4:170inadmissible. https://doi.org/10.1038/sdata.2017.27
+- **MIDORI2:** Machida RJ *et al.* (2017) MIDORI series of curated sequence reference databases. *Scientific Data* 4:170027. https://doi.org/10.1038/sdata.2017.27
+- **rbcLClassifier:** Porter TM & Hajibabaei M (2022) rbcLClassifier: a trained RDP Classifier for rbcL (v1.0). Zenodo. https://doi.org/10.5281/zenodo.4741459
+- **RDP Classifier:** Wang Q *et al.* (2007) Naive Bayesian classifier for rapid assignment of rRNA sequences into the new bacterial taxonomy. *Applied and Environmental Microbiology* 73:5261–5267. https://doi.org/10.1128/AEM.00062-07
+- **rbcL primers:** Kress WJ & Erickson DL (2007) A two-locus global DNA barcode for land plants. *PLOS ONE* 2:e508. https://doi.org/10.1371/journal.pone.0000508
 - **phyloseq:** McMurdie PJ & Holmes S (2013) phyloseq: An R package for reproducible interactive analysis and graphics of microbiome census data. *PLOS ONE* 8:e61217. https://doi.org/10.1371/journal.pone.0061217
 - **vegan:** Oksanen J *et al.* (2022) vegan: Community Ecology Package. R package. https://CRAN.R-project.org/package=vegan
 - **DESeq2:** Love MI *et al.* (2014) Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. *Genome Biology* 15:550. https://doi.org/10.1186/s13059-014-0550-8
