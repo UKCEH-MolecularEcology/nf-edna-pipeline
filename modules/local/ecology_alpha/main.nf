@@ -22,6 +22,11 @@ process ECOLOGY_ALPHA {
     #!/usr/bin/env Rscript
 
     # ── Package loading ──────────────────────────────────────────────────────
+    # Ensure BiocManager is current enough for this R version (R 4.5 needs Bioc 3.22+)
+    if (!requireNamespace("BiocManager", quietly=TRUE) ||
+            packageVersion("BiocManager") < package_version("1.30.22"))
+        install.packages("BiocManager", repos="https://cloud.r-project.org", quiet=TRUE)
+
     required <- c("phyloseq","vegan","ggplot2","dplyr","tidyr","iNEXT",
                   "dunn.test","rstatix","ggpubr","cowplot","microbiome",
                   "BiocManager")

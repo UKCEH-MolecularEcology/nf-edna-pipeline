@@ -25,8 +25,10 @@ process ECOLOGY_ORDINATION_FULL {
     required <- c("phyloseq", "vegan", "ggplot2", "dplyr", "cowplot")
     for (pkg in required) {
         if (!requireNamespace(pkg, quietly=TRUE)) {
-    if (!requireNamespace("BiocManager", quietly=TRUE))
-        install.packages("BiocManager", repos="https://cloud.r-project.org")
+    # Ensure BiocManager is current enough for this R version
+    if (!requireNamespace("BiocManager", quietly=TRUE) ||
+            packageVersion("BiocManager") < package_version("1.30.22"))
+        install.packages("BiocManager", repos="https://cloud.r-project.org", quiet=TRUE)
             if (pkg %in% c("phyloseq"))
                 BiocManager::install(pkg, update=FALSE, ask=FALSE)
             else

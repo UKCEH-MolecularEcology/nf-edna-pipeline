@@ -24,6 +24,11 @@ process ECOLOGY_DIFFERENTIAL {
     """
     #!/usr/bin/env Rscript
 
+    # Ensure BiocManager is current enough for this R version (R 4.5 needs Bioc 3.22+)
+    if (!requireNamespace("BiocManager", quietly=TRUE) ||
+            packageVersion("BiocManager") < package_version("1.30.22"))
+        install.packages("BiocManager", repos="https://cloud.r-project.org", quiet=TRUE)
+
     pkgs <- c("DESeq2","ALDEx2","ggplot2","dplyr","tidyr","phyloseq",
               "ggrepel","BiocManager","ComplexHeatmap")
     for (pkg in pkgs) {

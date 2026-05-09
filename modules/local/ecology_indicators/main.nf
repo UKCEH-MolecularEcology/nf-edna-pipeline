@@ -21,6 +21,11 @@ process ECOLOGY_INDICATORS {
     """
     #!/usr/bin/env Rscript
 
+    # Ensure BiocManager is current enough for this R version (R 4.5 needs Bioc 3.22+)
+    if (!requireNamespace("BiocManager", quietly=TRUE) ||
+            packageVersion("BiocManager") < package_version("1.30.22"))
+        install.packages("BiocManager", repos="https://cloud.r-project.org", quiet=TRUE)
+
     pkgs <- c("vegan","indicspecies","ggplot2","dplyr","tidyr","microbiome","phyloseq")
     for (pkg in pkgs) {
         if (!requireNamespace(pkg, quietly=TRUE)) {
