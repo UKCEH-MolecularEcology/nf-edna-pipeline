@@ -43,4 +43,17 @@ process VSEARCH_CHIMERA {
         vsearch: \$(vsearch --version 2>&1 | head -1 | sed 's/vsearch v//')
     END_VERSIONS
     """
+
+    stub:
+    def prefix = "${meta.id}_${meta.marker}"
+    """
+    touch ${prefix}.nonchimeras.fasta
+    touch ${prefix}.chimera_ids.txt
+    touch ${prefix}.chimera_stats.txt
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        vsearch: 2.26.0
+    END_VERSIONS
+    """
 }

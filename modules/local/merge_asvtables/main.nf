@@ -64,4 +64,16 @@ process MERGE_ASV_TABLES {
         "versions.yml"
     )
     """
+
+    stub:
+    """
+    touch ${marker}.merged_asv_table.tsv
+    touch ${marker}.merged_asv_table.rds
+    touch ${marker}.read_tracking.tsv
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        R: 4.3.3
+    END_VERSIONS
+    """
 }

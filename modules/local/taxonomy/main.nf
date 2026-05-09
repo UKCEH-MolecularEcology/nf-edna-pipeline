@@ -144,4 +144,16 @@ process TAXONOMY {
         )
         """
     }
+
+    stub:
+    def prefix = "${meta.id}_${meta.marker}"
+    """
+    touch ${prefix}.taxonomy.tsv
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        R: 4.3.3
+    END_VERSIONS
+    """
+
 }

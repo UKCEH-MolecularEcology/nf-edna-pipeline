@@ -64,6 +64,29 @@ process CUTADAPT {
         END_VERSIONS
         """
     }
+
+    stub:
+    def prefix = "${meta.id}_${meta.marker}"
+    if (meta.single_end) {
+        """
+        touch ${prefix}.trimmed.fastq.gz
+        touch ${prefix}.log
+        cat <<-END_VERSIONS > versions.yml
+        "${task.process}":
+            cutadapt: 4.6
+        END_VERSIONS
+        """
+    } else {
+        """
+        touch ${prefix}_R1.trimmed.fastq.gz
+        touch ${prefix}_R2.trimmed.fastq.gz
+        touch ${prefix}.log
+        cat <<-END_VERSIONS > versions.yml
+        "${task.process}":
+            cutadapt: 4.6
+        END_VERSIONS
+        """
+    }
 }
 
 // Groovy helper to reverse-complement a DNA primer (IUPAC)

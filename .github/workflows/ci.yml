@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+
+  # ── Python unit tests ────────────────────────────────────────────────────────
+  python-tests:
+    name: Python unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pytest
+
+      - name: Run tests
+        run: pytest tests/test_make_samplesheet.py tests/test_parse_rdp.py -v
+
+  # ── Nextflow pipeline validation ─────────────────────────────────────────────
+  nextflow-preview:
+    name: Nextflow DAG validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nextflow
+        run: |
+          curl -s https://get.nextflow.io | bash
+          sudo mv nextflow /usr/local/bin/
+          nextflow -version
+
+      - name: Pipeline preview (test profile)
+        run: nextflow run main.nf -profile test -preview
+
+  # ── Nextflow stub run (tests process outputs without real tools) ──────────────
+  nextflow-stub:
+    name: Nextflow stub run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nextflow
+        run: |
+          curl -s https://get.nextflow.io | bash
+          sudo mv nextflow /usr/local/bin/
+
+      - name: Stub run (test profile)
+        run: nextflow run main.nf -profile test -stub-run

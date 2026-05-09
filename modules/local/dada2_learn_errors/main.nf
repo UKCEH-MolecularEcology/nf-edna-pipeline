@@ -105,4 +105,18 @@ process DADA2_LEARN_ERRORS {
         "versions.yml"
     )
     """
+
+    stub:
+    def prefix = "${run_id}_${marker}"
+    """
+    touch ${prefix}_error_model_fwd.rds
+    touch ${prefix}_error_model_rev.rds
+    touch ${prefix}_error_models.png
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        dada2: 1.30.0
+    END_VERSIONS
+    """
+
 }

@@ -160,4 +160,18 @@ process DADA2_DENOISE {
         "versions.yml"
     )
     """
+
+    stub:
+    def prefix = "${meta.id}_${meta.marker}"
+    """
+    touch ${prefix}.asv_table.rds
+    touch ${prefix}.asv_seqs.fasta
+    touch ${prefix}.read_stats.tsv
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        dada2: 1.30.0
+    END_VERSIONS
+    """
+
 }
