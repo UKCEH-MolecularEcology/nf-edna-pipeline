@@ -26,7 +26,7 @@ process ECOLOGY_BETA {
     dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
     .libPaths(c(r_lib, .libPaths()))
 
-    r_ver <- numeric_version(paste(R.version$major, R.version$minor, sep="."))
+    r_ver <- numeric_version(paste(R.version\$major, R.version\$minor, sep="."))
     bioc_ver <- if (r_ver >= "4.5") "3.22" else if (r_ver >= "4.4") "3.20" else if (r_ver >= "4.3") "3.18" else "3.16"
     options(repos = c(
         BioCsoft = paste0("https://bioconductor.org/packages/", bioc_ver, "/bioc"),
