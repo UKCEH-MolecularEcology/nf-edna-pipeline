@@ -16,7 +16,7 @@ process ECOLOGY_INDICATORS {
     path 'versions.yml',                                      emit: versions
 
     script:
-    def meta_arg  = metadata ? "\"${metadata}\"" : 'NULL'
+    def meta_arg  = (metadata && metadata.name != 'NO_FILE') ? "\"${metadata}\"" : 'NULL'
     def group_arg = group_var ? "\"${group_var}\"" : 'NULL'
     """
     #!/usr/bin/env Rscript

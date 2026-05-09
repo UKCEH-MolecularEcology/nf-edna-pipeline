@@ -6,7 +6,7 @@ workflow ECOLOGICAL_ANALYSIS {
 
     take:
     ch_input    // [ marker, asv_table, taxonomy_table ]
-    metadata    // file or [] if none
+    metadata    // path to metadata TSV, or assets/NO_FILE when absent
 
     main:
 

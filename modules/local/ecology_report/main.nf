@@ -18,7 +18,7 @@ process ECOLOGY_REPORT {
     path 'versions.yml',                                          emit: versions
 
     script:
-    def meta_arg = metadata ? "\"${metadata}\"" : 'NULL'
+    def meta_arg = (metadata && metadata.name != 'NO_FILE') ? "\"${metadata}\"" : 'NULL'
     """
     #!/usr/bin/env Rscript
 

@@ -139,7 +139,7 @@ def write_filtered_metadata(samples, id_col, header, meta_rows, output_path: Pat
             file=sys.stderr,
         )
 
-    delimiter = '\t' if output_path.suffix.lower() in ('.tsv', '.txt') else '\t'
+    delimiter = '\t' if output_path.suffix.lower() in ('.tsv', '.txt') else ','
     with output_path.open('w', newline='') as fh:
         writer = csv.DictWriter(fh, fieldnames=header, delimiter=delimiter,
                                 extrasaction='ignore')
@@ -219,6 +219,11 @@ def main():
         print(f"  nextflow run main.nf --input {output_path} --metadata {meta_out} \\")
         print(f"    --markers '{','.join(sorted(marker_counts))}' --outdir results")
     else:
+        print(
+            "\nNote: no metadata file provided — ecology analyses will run in "
+            "unsupervised mode (no grouping, PERMANOVA, or differential abundance).",
+            file=sys.stderr,
+        )
         print(f"\nNextflow command:")
         print(f"  nextflow run main.nf --input {output_path} \\")
         print(f"    --markers '{','.join(sorted(marker_counts))}' --outdir results")

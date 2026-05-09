@@ -17,23 +17,19 @@ include { ECOLOGY_REPORT         } from '../../modules/local/ecology_report/main
  *
  * Input:
  *   ch_ecology_input  — channel of [ marker, asv_table_tsv, taxonomy_tsv ]
- *   metadata          — path to sample metadata TSV (or [])
+ *   metadata          — path to sample metadata TSV (or assets/NO_FILE when absent)
  */
 
 workflow FULL_ECOLOGICAL_ANALYSIS {
 
     take:
     ch_ecology_input   // [ marker, asv_table, taxonomy ]
-    metadata           // file or []
+    metadata           // path to metadata TSV, or assets/NO_FILE when absent
 
     main:
     ch_versions = Channel.empty()
 
-    // Resolve metadata as a proper file or empty file placeholder
-    def meta_file = metadata instanceof List && metadata.isEmpty()
-        ? file('NO_FILE')
-        : metadata
-
+    def meta_file = metadata
     def group_var = params.ecology_group_var ?: null
 
     // ── Per-marker analyses (run in parallel for each marker) ────────────

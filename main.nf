@@ -5,6 +5,10 @@ nextflow.enable.dsl = 2
  * eDNA Metabarcoding Pipeline
  * Supports: 16S, 18S, ITS, CO1, 12S, RBCL
  * Raw reads → QC → Primer trimming → DADA2 denoising → Taxonomy → Ecology
+ *
+ * Input options (mutually exclusive):
+ *   --input      Samplesheet CSV (sample, fastq_1, fastq_2, marker)
+ *   --fastq_dir  Directory of FASTQ files; markers auto-detected from filenames
  */
 
 include { AMPLICON_QC              } from './subworkflows/local/amplicon_qc'
@@ -14,21 +18,34 @@ include { FULL_ECOLOGICAL_ANALYSIS } from './subworkflows/local/full_ecological_
 include { MERGE_ASV_TABLES         } from './modules/local/merge_asvtables/main'
 include { MULTIQC                  } from './modules/local/multiqc/main'
 
-// ─── Validate parameters ────────────────────────────────────────────────────
+// ─── Constants ───────────────────────────────────────────────────────────────
 
 def valid_markers = ['16S', '18S', 'ITS', 'CO1', '12S', 'RBCL']
 
+def marker_aliases = [
+    '16S': '16S', '18S': '18S', 'ITS': 'ITS', 'ITS1': 'ITS', 'ITS2': 'ITS',
+    'CO1': 'CO1', 'COI': 'CO1', '12S': '12S', 'RBCL': 'RBCL'
+]
+
+// ─── Validate parameters ────────────────────────────────────────────────────
+
 def checkParams() {
-    if (!params.input) {
-        error "Please provide a samplesheet with --input"
+    if (!params.input && !params.fastq_dir) {
+        error "Provide either --input (samplesheet CSV) or --fastq_dir (FASTQ directory)"
+    }
+    if (params.input && params.fastq_dir) {
+        error "Specify either --input or --fastq_dir, not both"
     }
     if (!params.outdir) {
         error "Please provide an output directory with --outdir"
     }
-    def markers = params.markers instanceof List ? params.markers : params.markers.tokenize(',')
-    markers.each { m ->
-        if (!valid_markers.contains(m.trim())) {
-            error "Invalid marker '${m}'. Valid markers: ${valid_markers.join(', ')}"
+    // Marker validation only applies when using --input (fastq_dir auto-detects them)
+    if (params.input) {
+        def markers = params.markers instanceof List ? params.markers : params.markers.tokenize(',')
+        markers.each { m ->
+            if (!valid_markers.contains(m.trim())) {
+                error "Invalid marker '${m}'. Valid markers: ${valid_markers.join(', ')}"
+            }
         }
     }
 }
@@ -40,8 +57,8 @@ def parseSamplesheet(csv) {
         .splitCsv(header: true, strip: true)
         .map { row ->
             def meta = [
-                id:     row.sample,
-                marker: row.marker.toUpperCase(),
+                id:         row.sample,
+                marker:     row.marker.toUpperCase(),
                 single_end: row.fastq_2 ? false : true
             ]
             def reads = row.fastq_2
@@ -51,20 +68,110 @@ def parseSamplesheet(csv) {
         }
 }
 
+// ─── Auto-detect samples from FASTQ directory ───────────────────────────────
+
+def parseFastqDir(fastq_dir) {
+    def dir = file(fastq_dir)
+    if (!dir.isDirectory()) error "--fastq_dir is not a directory: ${fastq_dir}"
+
+    def samples  = [:]   // [sample_id, marker] → [R1: file, R2: file]
+    def skipped  = []
+
+    dir.listFiles()
+        .findAll { it.name.endsWith('.fastq.gz') }
+        .sort    { it.name }
+        .each    { f ->
+            def m = (f.name =~ /_(S\d+)_(R[12])_001\.fastq\.gz$/)
+            if (!m) { skipped << f.name; return }
+
+            def read = m[0][2].toUpperCase()
+            def stem = f.name[0..(f.name.size() - m[0][0].size() - 1)]
+
+            def sample_id = null
+            def marker    = null
+            for (sep in ['-', '_']) {
+                def idx = stem.lastIndexOf(sep as String)
+                if (idx < 0) continue
+                def candidate = stem[(idx + 1)..-1].toUpperCase()
+                if (marker_aliases.containsKey(candidate)) {
+                    sample_id = stem[0..(idx - 1)]
+                    marker    = marker_aliases[candidate]
+                    break
+                }
+            }
+            if (!sample_id) { skipped << f.name; return }
+
+            def key = [sample_id, marker]
+            if (!samples.containsKey(key)) samples[key] = [:]
+            if (samples[key].containsKey(read)) {
+                error "Duplicate ${read} for sample='${sample_id}' marker='${marker}': ${f}"
+            }
+            samples[key][read] = f
+        }
+
+    if (skipped) {
+        log.warn "Skipped ${skipped.size()} unrecognised FASTQ file(s):\n  ${skipped.join('\n  ')}"
+    }
+    if (!samples) error "No samples detected in: ${fastq_dir}"
+    return samples
+}
+
+// ─── Write auto-generated samplesheet ───────────────────────────────────────
+
+def writeSamplesheet(samples, path_str) {
+    def out = file(path_str)
+    out.parent.mkdirs()
+    def lines = ['sample,fastq_1,fastq_2,marker']
+    samples.sort { a, b -> (a.key[0] <=> b.key[0]) ?: (a.key[1] <=> b.key[1]) }
+           .each { key, reads ->
+                lines << "${key[0]},${reads.R1 ?: ''},${reads.R2 ?: ''},${key[1]}"
+           }
+    out.text = lines.join('\n') + '\n'
+    log.info "Auto-generated samplesheet: ${out}"
+}
+
 // ─── Main workflow ───────────────────────────────────────────────────────────
 
 workflow {
 
     checkParams()
 
-    def markers_list = params.markers instanceof List
-        ? params.markers
-        : params.markers.tokenize(',').collect { it.trim() }
+    // ── Resolve input: samplesheet OR FASTQ directory ────────────────────
+    def markers_list
+    def ch_reads
 
-    // Parse samplesheet → channel of [meta, reads]
-    ch_reads = parseSamplesheet(params.input)
+    if (params.fastq_dir) {
+        def detected = parseFastqDir(params.fastq_dir)
+        markers_list = detected.keySet().collect { it[1] }.unique().sort()
+        log.info "Auto-detected markers: ${markers_list.join(', ')}"
+        writeSamplesheet(detected, "${params.outdir}/samplesheet_detected.csv")
 
-    // Filter to requested markers
+        ch_reads = Channel.fromList(
+            detected.collect { key, reads ->
+                def meta = [
+                    id:         key[0],
+                    marker:     key[1],
+                    single_end: !reads.containsKey('R2')
+                ]
+                def files = reads.containsKey('R2')
+                    ? [ reads.R1, reads.R2 ]
+                    : [ reads.R1 ]
+                [ meta, files ]
+            }
+        )
+    } else {
+        markers_list = params.markers instanceof List
+            ? params.markers
+            : params.markers.tokenize(',').collect { it.trim() }
+        ch_reads = parseSamplesheet(params.input)
+    }
+
+    // ── Metadata (NO_FILE placeholder when absent) ────────────────────────
+    def meta_file = params.metadata
+        ? file(params.metadata)
+        : file("${projectDir}/assets/NO_FILE")
+
+    // ── Filter to requested markers ───────────────────────────────────────
     ch_reads_filtered = ch_reads
         .filter { meta, reads -> markers_list.contains(meta.marker) }
 
@@ -72,7 +179,6 @@ workflow {
     AMPLICON_QC(ch_reads_filtered)
 
     // ── Per-marker processing ─────────────────────────────────────────────
-    // Branch by marker so each gets its own primer params and DB
     ch_by_marker = ch_reads_filtered
         .branch {
             s16:  it[0].marker == '16S'
@@ -122,7 +228,6 @@ workflow {
     MULTIQC(ch_multiqc_files)
 
     // ── Ecological analysis ───────────────────────────────────────────────
-    // Build shared input channel: [ marker, asv_table, taxonomy ]
     ch_taxonomy_by_marker = ch_taxonomy_tbls
         .map { meta, tbl -> [ meta.marker, tbl ] }
         .groupTuple()
@@ -131,14 +236,10 @@ workflow {
     ch_ecology_input = MERGE_ASV_TABLES.out.merged_table
         .join(ch_taxonomy_by_marker, by: 0)
 
-    def meta_file = params.metadata ? file(params.metadata) : []
-
-    // Basic ecology (barplots, basic PCoA, diversity)
     if (params.run_ecology) {
         ECOLOGICAL_ANALYSIS(ch_ecology_input, meta_file)
     }
 
-    // Full ecological analysis suite (runs after basic ecology)
     if (params.run_full_ecology) {
         FULL_ECOLOGICAL_ANALYSIS(ch_ecology_input, meta_file)
     }
@@ -163,8 +264,8 @@ def loadMarkerParams(marker) {
         max_ee_f:      primers.max_ee_f ?: 2,
         max_ee_r:      primers.max_ee_r ?: 2,
         tax_db:        file(db.path, checkIfExists: true),
-        tax_db_type:   db.type,   // silva | unite | midori | pr2
-        tax_method:    db.method  // dada2 | blast | kraken2
+        tax_db_type:   db.type,
+        tax_method:    db.method
     ]
 }
 

@@ -156,15 +156,38 @@ databases {
 
 ## Quick start
 
+There are two ways to provide input reads. Use `--input` (samplesheet) or `--fastq_dir` (directory) — not both.
+
+**Option A — auto-detect from a FASTQ directory (no samplesheet needed):**
+
+```bash
+# Markers are inferred from filenames; a samplesheet is written to results/
+nextflow run main.nf \
+    --fastq_dir /path/to/fastqs/ \
+    --outdir results/ \
+    -profile docker
+
+# With metadata for ecology analysis
+nextflow run main.nf \
+    --fastq_dir /path/to/fastqs/ \
+    --metadata metadata.tsv \
+    --ecology_group_var habitat \
+    --outdir results/ \
+    -profile slurm,singularity \
+    -resume
+```
+
+**Option B — explicit samplesheet:**
+
 ```bash
 # Run 16S with Docker
 nextflow run main.nf \
-    --input assets/samplesheet_example.csv \
+    --input samplesheet.csv \
     --markers 16S \
     --outdir results/ \
     -profile docker
 
-# Run all six markers on a SLURM cluster with Singularity
+# Run all six markers on a SLURM cluster
 nextflow run main.nf \
     --input samplesheet.csv \
     --markers 16S,18S,ITS,CO1,12S,RBCL \
@@ -177,11 +200,15 @@ nextflow run main.nf \
 
 Use `-resume` to restart from the last successful step after a failure or parameter change.
 
+> **Without metadata:** All quality, denoising, and taxonomy steps run normally. Ecology analyses run in unsupervised mode — alpha diversity, ordination, barplots, and co-occurrence networks are produced, but group-dependent analyses (PERMANOVA, differential abundance, IndVal, envfit) are automatically skipped.
+
 ---
 
 ## Samplesheet generation
 
-A helper script builds the samplesheet CSV automatically from a directory of FASTQ files and optionally merges it with a metadata file for ecology analysis.
+The pipeline can consume a FASTQ directory directly via `--fastq_dir` (see [Quick start](#quick-start)), which auto-detects markers and writes the samplesheet to `results/samplesheet_detected.csv` for reference.
+
+Alternatively, use the helper script to generate a samplesheet ahead of time — useful for reviewing or editing before running the pipeline.
 
 **Expected filename format** (standard Illumina output):
 ```
@@ -282,10 +309,11 @@ Use `bin/make_samplesheet.py --metadata` to automatically filter your metadata f
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `--input` | required | Path to samplesheet CSV |
+| `--input` | — | Samplesheet CSV. Mutually exclusive with `--fastq_dir` |
+| `--fastq_dir` | — | Directory of FASTQ files. Markers auto-detected from filenames. Mutually exclusive with `--input` |
 | `--outdir` | `results` | Output directory |
-| `--markers` | `16S` | Comma-separated list of markers to process |
-| `--metadata` | null | Path to sample metadata TSV |
+| `--markers` | `16S` | Comma-separated markers to process. Ignored when using `--fastq_dir` |
+| `--metadata` | null | Path to sample metadata TSV. If omitted, ecology runs in unsupervised mode |
 | `--single_end` | `false` | Set to `true` for single-end libraries |
 
 ### DADA2 parameters
