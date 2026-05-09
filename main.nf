@@ -272,8 +272,8 @@ workflow {
     MERGE_ASV_TABLES(ch_asv_grouped)
 
     // ── MultiQC report ────────────────────────────────────────────────────
-    ch_multiqc_files = AMPLICON_QC.out.fastqc_zip
-        .mix(ch_cutadapt_logs)
+    ch_multiqc_files = AMPLICON_QC.out.fastqc_zip.map { meta, zip -> zip }
+        .mix(ch_cutadapt_logs.map { meta, log -> log })
         .collect()
     MULTIQC(ch_multiqc_files)
 
