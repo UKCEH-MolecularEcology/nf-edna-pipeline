@@ -164,14 +164,16 @@ There are two ways to provide input reads. Use `--input` (samplesheet) or `--fas
 # Markers are inferred from filenames; a samplesheet is written to results/
 nextflow run main.nf \
     --fastq_dir /path/to/fastqs/ \
+    --cores 16 \
     --outdir results/ \
     -profile docker
 
-# With metadata for ecology analysis
+# With metadata for ecology analysis on an HPC cluster
 nextflow run main.nf \
     --fastq_dir /path/to/fastqs/ \
     --metadata metadata.tsv \
     --ecology_group_var habitat \
+    --cores 64 \
     --outdir results/ \
     -profile slurm,singularity \
     -resume
@@ -184,6 +186,7 @@ nextflow run main.nf \
 nextflow run main.nf \
     --input samplesheet.csv \
     --markers 16S \
+    --cores 8 \
     --outdir results/ \
     -profile docker
 
@@ -193,6 +196,7 @@ nextflow run main.nf \
     --markers 16S,18S,ITS,CO1,12S,RBCL \
     --metadata metadata.tsv \
     --ecology_group_var habitat \
+    --cores 64 \
     --outdir results/ \
     -profile slurm,singularity \
     -resume
@@ -314,7 +318,18 @@ Use `bin/make_samplesheet.py --metadata` to automatically filter your metadata f
 | `--outdir` | `results` | Output directory |
 | `--markers` | `16S` | Comma-separated markers to process. Ignored when using `--fastq_dir` |
 | `--metadata` | null | Path to sample metadata TSV. If omitted, ecology runs in unsupervised mode |
+| `--cores` | `4` | Number of CPU threads available to the pipeline. All process labels scale from this value (see table below) |
 | `--single_end` | `false` | Set to `true` for single-end libraries |
+
+**CPU scaling by `--cores`:**
+
+| `--cores` | `process_low` (Cutadapt, VSEARCH) | `process_medium` (DADA2 error models) | `process_high` (DADA2 denoising, taxonomy, ecology) |
+|-----------|----------------------------------|--------------------------------------|-----------------------------------------------------|
+| 4 | 2 | 4 | 4 |
+| 8 | 2 | 4 | 8 |
+| 16 | 2 | 4 | 16 |
+| 32 | 4 | 8 | 32 |
+| 64 | 8 | 16 | 64 |
 
 ### DADA2 parameters
 
