@@ -88,12 +88,8 @@ workflow AMPLICON_PROCESSING {
     )
     ch_versions = ch_versions.mix(TAXONOMY.out.versions.first())
 
-    // 6. Join ASV table with chimera-filtered ASV IDs
-    ch_filtered_table = DADA2_DENOISE.out.asv_table
-        .join(VSEARCH_CHIMERA.out.nonchimera_ids, by: [0])
-
     emit:
-    asv_table    = ch_filtered_table                // [ meta, asv_table.tsv ]
+    asv_table    = DADA2_DENOISE.out.asv_table      // [ meta, asv_table.rds ]
     asv_seqs     = VSEARCH_CHIMERA.out.nonchimeras  // [ meta, asv_seqs.fasta ]
     taxonomy     = TAXONOMY.out.taxonomy            // [ meta, taxonomy.tsv ]
     cutadapt_log = CUTADAPT.out.log
