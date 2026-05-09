@@ -32,9 +32,13 @@ workflow AMPLICON_PROCESSING {
     ch_trimmed_by_run = CUTADAPT.out.reads
         .map { meta, reads ->
             def run_id = meta.run ?: 'run1'
-            [ run_id, meta, reads ]
+            [ run_id, meta, reads instanceof List ? reads : [reads] ]
         }
         .groupTuple(by: 0)
+        .map { run_id, metas, reads_list ->
+            // flatten [[R1,R2],[R1,R2],...] → [R1,R2,R1,R2,...] for path staging
+            [ run_id, metas, reads_list.flatten() ]
+        }
 
     DADA2_LEARN_ERRORS(
         ch_trimmed_by_run,
