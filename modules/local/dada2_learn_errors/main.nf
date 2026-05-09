@@ -34,7 +34,7 @@ process DADA2_LEARN_ERRORS {
     max_ee_r    <- as.numeric("${max_ee_r}")
 
     # Collect all trimmed read files for this run
-    all_files <- list.files(".", pattern = "\\.trimmed\\.fastq\\.gz\$", full.names = TRUE)
+    all_files <- list.files(".", pattern = "\\\\.trimmed\\\\.fastq\\\\.gz\$", full.names = TRUE)
 
     if (paired_end) {
         fwd_files <- sort(all_files[grepl("_R1", all_files)])

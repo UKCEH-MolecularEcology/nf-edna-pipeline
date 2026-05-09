@@ -47,7 +47,7 @@ process DADA2_DENOISE {
     err_fwd <- readRDS("${err_fwd}")
     err_rev <- readRDS("${err_rev}")
 
-    all_files <- list.files(".", pattern = "\\.trimmed\\.fastq\\.gz\$", full.names = TRUE)
+    all_files <- list.files(".", pattern = "\\\\.trimmed\\\\.fastq\\\\.gz\$", full.names = TRUE)
 
     if (paired_end) {
         fwd_files <- sort(all_files[grepl("_R1", all_files)])
