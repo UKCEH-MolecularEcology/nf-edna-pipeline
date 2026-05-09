@@ -107,11 +107,10 @@ process DADA2_LEARN_ERRORS {
     """
 
     stub:
-    def prefix = "${run_id}_${marker}"
     """
-    touch ${prefix}_error_model_fwd.rds
-    touch ${prefix}_error_model_rev.rds
-    touch ${prefix}_error_models.png
+    touch error_model_fwd.rds
+    touch error_model_rev.rds
+    touch error_models.png
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
