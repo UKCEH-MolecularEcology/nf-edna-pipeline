@@ -254,6 +254,16 @@ def loadMarkerParams(marker) {
     if (!primers) error "No primer configuration found for marker: ${marker}"
     if (!db)      error "No database configuration found for marker: ${marker}"
 
+    def tax_db_file = file(db.path)
+    if (!tax_db_file.exists()) {
+        error """\
+            Database not found for ${marker}: ${db.path}
+            Run the download script first:
+              bash ${projectDir}/assets/download_databases.sh ${projectDir}/databases/
+            ITS (UNITE) requires a manual download — see assets/download_databases.sh for details.
+            """.stripIndent()
+    }
+
     return [
         fwd_primer:    primers.fwd,
         rev_primer:    primers.rev,
@@ -263,7 +273,7 @@ def loadMarkerParams(marker) {
         trunc_len_r:   primers.trunc_len_r ?: 0,
         max_ee_f:      primers.max_ee_f ?: 2,
         max_ee_r:      primers.max_ee_r ?: 2,
-        tax_db:        file(db.path, checkIfExists: true),
+        tax_db:        tax_db_file,
         tax_db_type:   db.type,
         tax_method:    db.method
     ]
