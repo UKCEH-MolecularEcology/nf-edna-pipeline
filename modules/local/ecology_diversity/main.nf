@@ -19,17 +19,17 @@ process ECOLOGY_DIVERSITY {
     """
     #!/usr/bin/env Rscript
 
-    # Install required packages if not present
-    # Always use the latest BiocManager so it resolves the correct
-    # Bioconductor version for the running R installation
-    install.packages("BiocManager", repos="https://cloud.r-project.org", quiet=TRUE)
+    r_lib <- file.path(getwd(), ".r_libs")
+    dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
+    .libPaths(c(r_lib, .libPaths()))
+    install.packages("BiocManager", repos="https://cloud.r-project.org",
+                     quiet=TRUE, lib=r_lib)
 
     pkgs <- c("phyloseq", "vegan", "ggplot2", "dplyr", "tidyr",
               "iNEXT", "microbiome", "DESeq2")
     for (pkg in pkgs) {
         if (!requireNamespace(pkg, quietly=TRUE)) {
-            if (!requireNamespace("BiocManager", quietly=TRUE)) install.packages("BiocManager")
-            BiocManager::install(pkg, update=FALSE)
+            BiocManager::install(pkg, update=FALSE, ask=FALSE)
         }
     }
     suppressPackageStartupMessages({

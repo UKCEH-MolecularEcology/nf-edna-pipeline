@@ -26,8 +26,7 @@ process ECOLOGY_MULTIMARKER {
     required <- c("vegan", "ggplot2", "dplyr", "tidyr", "cowplot")
     for (pkg in required) {
         if (!requireNamespace(pkg, quietly=TRUE)) {
-            else
-                install.packages(pkg, repos="https://cloud.r-project.org")
+            install.packages(pkg, repos="https://cloud.r-project.org")
         }
     }
     suppressPackageStartupMessages({

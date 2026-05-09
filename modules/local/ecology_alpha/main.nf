@@ -22,13 +22,14 @@ process ECOLOGY_ALPHA {
     #!/usr/bin/env Rscript
 
     # ── Package loading ──────────────────────────────────────────────────────
-    # Always use the latest BiocManager so it resolves the correct
-    # Bioconductor version for the running R installation
-    install.packages("BiocManager", repos="https://cloud.r-project.org", quiet=TRUE)
+    r_lib <- file.path(getwd(), ".r_libs")
+    dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
+    .libPaths(c(r_lib, .libPaths()))
+    install.packages("BiocManager", repos="https://cloud.r-project.org",
+                     quiet=TRUE, lib=r_lib)
 
     required <- c("phyloseq","vegan","ggplot2","dplyr","tidyr","iNEXT",
-                  "dunn.test","rstatix","ggpubr","cowplot","microbiome",
-                  "BiocManager")
+                  "dunn.test","rstatix","ggpubr","cowplot","microbiome")
     for (pkg in required) {
         if (!requireNamespace(pkg, quietly=TRUE)) {
             if (pkg %in% c("phyloseq","microbiome"))

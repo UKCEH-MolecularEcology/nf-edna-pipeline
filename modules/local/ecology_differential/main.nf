@@ -24,12 +24,14 @@ process ECOLOGY_DIFFERENTIAL {
     """
     #!/usr/bin/env Rscript
 
-    # Always use the latest BiocManager so it resolves the correct
-    # Bioconductor version for the running R installation
-    install.packages("BiocManager", repos="https://cloud.r-project.org", quiet=TRUE)
+    r_lib <- file.path(getwd(), ".r_libs")
+    dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
+    .libPaths(c(r_lib, .libPaths()))
+    install.packages("BiocManager", repos="https://cloud.r-project.org",
+                     quiet=TRUE, lib=r_lib)
 
     pkgs <- c("DESeq2","ALDEx2","ggplot2","dplyr","tidyr","phyloseq",
-              "ggrepel","BiocManager","ComplexHeatmap")
+              "ggrepel","ComplexHeatmap")
     for (pkg in pkgs) {
         if (!requireNamespace(pkg, quietly=TRUE)) {
             BiocManager::install(pkg, update=FALSE, ask=FALSE)

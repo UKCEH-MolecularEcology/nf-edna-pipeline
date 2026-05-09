@@ -22,12 +22,15 @@ process ECOLOGY_BETA {
     #!/usr/bin/env Rscript
 
     # ── Package loading ──────────────────────────────────────────────────────
+    r_lib <- file.path(getwd(), ".r_libs")
+    dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
+    .libPaths(c(r_lib, .libPaths()))
+    install.packages("BiocManager", repos="https://cloud.r-project.org",
+                     quiet=TRUE, lib=r_lib)
+
     required <- c("phyloseq", "vegan", "ggplot2", "dplyr", "tidyr")
     for (pkg in required) {
         if (!requireNamespace(pkg, quietly=TRUE)) {
-        # Always use the latest BiocManager so it resolves the correct
-    # Bioconductor version for the running R installation
-    install.packages("BiocManager", repos="https://cloud.r-project.org", quiet=TRUE)
             if (pkg %in% c("phyloseq"))
                 BiocManager::install(pkg, update=FALSE, ask=FALSE)
             else

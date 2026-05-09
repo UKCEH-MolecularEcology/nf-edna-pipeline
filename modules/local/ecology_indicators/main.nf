@@ -21,19 +21,19 @@ process ECOLOGY_INDICATORS {
     """
     #!/usr/bin/env Rscript
 
-    # Always use the latest BiocManager so it resolves the correct
-    # Bioconductor version for the running R installation
-    install.packages("BiocManager", repos="https://cloud.r-project.org", quiet=TRUE)
+    r_lib <- file.path(getwd(), ".r_libs")
+    dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
+    .libPaths(c(r_lib, .libPaths()))
+    install.packages("BiocManager", repos="https://cloud.r-project.org",
+                     quiet=TRUE, lib=r_lib)
 
     pkgs <- c("vegan","indicspecies","ggplot2","dplyr","tidyr","microbiome","phyloseq")
     for (pkg in pkgs) {
         if (!requireNamespace(pkg, quietly=TRUE)) {
-            if (pkg %in% c("microbiome","phyloseq")) {
-                if (!requireNamespace("BiocManager",quietly=TRUE)) install.packages("BiocManager")
+            if (pkg %in% c("microbiome","phyloseq"))
                 BiocManager::install(pkg, update=FALSE, ask=FALSE)
-            } else {
+            else
                 install.packages(pkg, repos="https://cloud.r-project.org")
-            }
         }
     }
     suppressPackageStartupMessages({
