@@ -20,10 +20,9 @@ process ECOLOGY_DIVERSITY {
     #!/usr/bin/env Rscript
 
     # Install required packages if not present
-    # Ensure BiocManager is current enough for this R version (R 4.5 needs Bioc 3.22+)
-    if (!requireNamespace("BiocManager", quietly=TRUE) ||
-            packageVersion("BiocManager") < package_version("1.30.22"))
-        install.packages("BiocManager", repos="https://cloud.r-project.org", quiet=TRUE)
+    # Always use the latest BiocManager so it resolves the correct
+    # Bioconductor version for the running R installation
+    install.packages("BiocManager", repos="https://cloud.r-project.org", quiet=TRUE)
 
     pkgs <- c("phyloseq", "vegan", "ggplot2", "dplyr", "tidyr",
               "iNEXT", "microbiome", "DESeq2")
