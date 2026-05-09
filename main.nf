@@ -286,12 +286,23 @@ workflow {
     ch_ecology_input = MERGE_ASV_TABLES.out.merged_table
         .join(ch_taxonomy_by_marker, by: 0)
 
+    // Filter to markers whose ecology is not disabled via --skip_ecology_markers
+    def skip_eco = params.skip_ecology_markers
+        ? (params.skip_ecology_markers instanceof List
+            ? params.skip_ecology_markers
+            : params.skip_ecology_markers.tokenize(',').collect { it.trim().toUpperCase() })
+        : []
+
+    ch_ecology_filtered = skip_eco
+        ? ch_ecology_input.filter { marker, tbl, tax -> !skip_eco.contains(marker.toUpperCase()) }
+        : ch_ecology_input
+
     if (params.run_ecology) {
-        ECOLOGICAL_ANALYSIS(ch_ecology_input, meta_file)
+        ECOLOGICAL_ANALYSIS(ch_ecology_filtered, meta_file)
     }
 
     if (params.run_full_ecology) {
-        FULL_ECOLOGICAL_ANALYSIS(ch_ecology_input, meta_file)
+        FULL_ECOLOGICAL_ANALYSIS(ch_ecology_filtered, meta_file)
     }
 }
 

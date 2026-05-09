@@ -18,6 +18,19 @@ process ECOLOGY_BARPLOT {
     def meta_arg = (metadata && metadata.name != 'NO_FILE') ? "\"${metadata}\"" : 'NULL'
     """
     #!/usr/bin/env Rscript
+
+    # ── Package loading ──────────────────────────────────────────────────────
+    required <- c("phyloseq", "ggplot2", "dplyr", "tidyr")
+    for (pkg in required) {
+        if (!requireNamespace(pkg, quietly=TRUE)) {
+    if (!requireNamespace("BiocManager", quietly=TRUE))
+        install.packages("BiocManager", repos="https://cloud.r-project.org")
+            if (pkg %in% c("phyloseq"))
+                BiocManager::install(pkg, update=FALSE, ask=FALSE)
+            else
+                install.packages(pkg, repos="https://cloud.r-project.org")
+        }
+    }
     suppressPackageStartupMessages({
         library(phyloseq)
         library(ggplot2)

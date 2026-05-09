@@ -21,6 +21,15 @@ process ECOLOGY_MULTIMARKER {
     def meta_arg   = (metadata && metadata.name != 'NO_FILE') ? "\"${metadata}\"" : 'NULL'
     """
     #!/usr/bin/env Rscript
+
+    # ── Package loading ──────────────────────────────────────────────────────
+    required <- c("vegan", "ggplot2", "dplyr", "tidyr", "cowplot")
+    for (pkg in required) {
+        if (!requireNamespace(pkg, quietly=TRUE)) {
+            else
+                install.packages(pkg, repos="https://cloud.r-project.org")
+        }
+    }
     suppressPackageStartupMessages({
         library(vegan); library(ggplot2); library(dplyr)
         library(tidyr); library(cowplot)

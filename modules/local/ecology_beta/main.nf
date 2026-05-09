@@ -20,6 +20,19 @@ process ECOLOGY_BETA {
     def group_arg = group_var ? "\"${group_var}\"" : 'NULL'
     """
     #!/usr/bin/env Rscript
+
+    # ── Package loading ──────────────────────────────────────────────────────
+    required <- c("phyloseq", "vegan", "ggplot2", "dplyr", "tidyr")
+    for (pkg in required) {
+        if (!requireNamespace(pkg, quietly=TRUE)) {
+    if (!requireNamespace("BiocManager", quietly=TRUE))
+        install.packages("BiocManager", repos="https://cloud.r-project.org")
+            if (pkg %in% c("phyloseq"))
+                BiocManager::install(pkg, update=FALSE, ask=FALSE)
+            else
+                install.packages(pkg, repos="https://cloud.r-project.org")
+        }
+    }
     suppressPackageStartupMessages({
         library(phyloseq); library(vegan); library(ggplot2)
         library(dplyr);    library(tidyr)

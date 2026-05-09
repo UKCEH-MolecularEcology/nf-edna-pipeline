@@ -23,6 +23,15 @@ process ECOLOGY_ENVFIT {
     def group_arg = group_var ? "\"${group_var}\"" : 'NULL'
     """
     #!/usr/bin/env Rscript
+
+    # ── Package loading ──────────────────────────────────────────────────────
+    required <- c("vegan", "ggplot2", "dplyr", "tidyr")
+    for (pkg in required) {
+        if (!requireNamespace(pkg, quietly=TRUE)) {
+            else
+                install.packages(pkg, repos="https://cloud.r-project.org")
+        }
+    }
     suppressPackageStartupMessages({
         library(vegan); library(ggplot2); library(dplyr); library(tidyr)
     })
