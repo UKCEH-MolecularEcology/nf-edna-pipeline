@@ -30,7 +30,7 @@ workflow FULL_ECOLOGICAL_ANALYSIS {
     ch_versions = Channel.empty()
 
     def meta_file = metadata
-    def group_var = params.ecology_group_var ?: null
+    def group_var = params.ecology_group_var ?: ''
 
     // ── Per-marker analyses (run in parallel for each marker) ────────────
 
@@ -105,11 +105,19 @@ workflow FULL_ECOLOGICAL_ANALYSIS {
         .join(ECOLOGY_INDICATORS.out.results,      by: 0)
         .join(ECOLOGY_ENVFIT.out.results,          by: 0)
 
-    ch_report_with_data = ch_report_input
+    ch_report_input
         .join(ch_ecology_input.map { m, a, t -> [m, a, t] }, by: 0)
+        .multiMap { m, alpha, beta, ord, net, ind, env, asv, tax ->
+            dirs: [m, alpha, beta, ord, net, ind, env]
+            asv:  asv
+            tax:  tax
+        }
+        .set { rpt }
 
     ECOLOGY_REPORT(
-        ch_report_with_data,
+        rpt.dirs,
+        rpt.asv,
+        rpt.tax,
         meta_file
     )
     ch_versions = ch_versions.mix(ECOLOGY_REPORT.out.versions.first())

@@ -11,13 +11,18 @@ nextflow.enable.dsl = 2
  *   --fastq_dir  Directory of FASTQ files; markers auto-detected from filenames
  */
 
-include { AMPLICON_QC              } from './subworkflows/local/amplicon_qc'
-include { AMPLICON_PROCESSING      } from './subworkflows/local/amplicon_processing'
-include { ECOLOGICAL_ANALYSIS      } from './subworkflows/local/ecological_analysis'
-include { FULL_ECOLOGICAL_ANALYSIS } from './subworkflows/local/full_ecological_analysis'
-include { MERGE_ASV_TABLES         } from './modules/local/merge_asvtables/main'
-include { MULTIQC                  } from './modules/local/multiqc/main'
-include { SETUP_DATABASES          } from './modules/local/setup_databases/main'
+include { AMPLICON_QC                            } from './subworkflows/local/amplicon_qc'
+include { AMPLICON_PROCESSING as AMPLICON_PROCESSING_16S  } from './subworkflows/local/amplicon_processing'
+include { AMPLICON_PROCESSING as AMPLICON_PROCESSING_18S  } from './subworkflows/local/amplicon_processing'
+include { AMPLICON_PROCESSING as AMPLICON_PROCESSING_ITS  } from './subworkflows/local/amplicon_processing'
+include { AMPLICON_PROCESSING as AMPLICON_PROCESSING_CO1  } from './subworkflows/local/amplicon_processing'
+include { AMPLICON_PROCESSING as AMPLICON_PROCESSING_12S  } from './subworkflows/local/amplicon_processing'
+include { AMPLICON_PROCESSING as AMPLICON_PROCESSING_RBCL } from './subworkflows/local/amplicon_processing'
+include { ECOLOGICAL_ANALYSIS                  } from './subworkflows/local/ecological_analysis'
+include { FULL_ECOLOGICAL_ANALYSIS             } from './subworkflows/local/full_ecological_analysis'
+include { MERGE_ASV_TABLES                     } from './modules/local/merge_asvtables/main'
+include { MULTIQC                              } from './modules/local/multiqc/main'
+include { SETUP_DATABASES                      } from './modules/local/setup_databases/main'
 
 // ─── Validate parameters ────────────────────────────────────────────────────
 
@@ -213,26 +218,50 @@ workflow {
     ch_asv_tables    = Channel.empty()
     ch_asv_seqs      = Channel.empty()
     ch_taxonomy_tbls = Channel.empty()
+    ch_cutadapt_logs = Channel.empty()
 
-    markers_list.each { marker ->
-        def ch_marker_reads = marker == '16S'  ? ch_by_marker.s16
-                            : marker == '18S'  ? ch_by_marker.s18
-                            : marker == 'ITS'  ? ch_by_marker.its
-                            : marker == 'CO1'  ? ch_by_marker.co1
-                            : marker == '12S'  ? ch_by_marker.s12
-                            : ch_by_marker.rbcl
-
-        def marker_params = loadMarkerParams(marker)
-
-        AMPLICON_PROCESSING(
-            ch_marker_reads,
-            marker,
-            marker_params
-        )
-
-        ch_asv_tables    = ch_asv_tables.mix(AMPLICON_PROCESSING.out.asv_table)
-        ch_asv_seqs      = ch_asv_seqs.mix(AMPLICON_PROCESSING.out.asv_seqs)
-        ch_taxonomy_tbls = ch_taxonomy_tbls.mix(AMPLICON_PROCESSING.out.taxonomy)
+    // DSL2 requires each subworkflow to be called at most once; use aliased imports
+    if (markers_list.contains('16S')) {
+        AMPLICON_PROCESSING_16S(ch_by_marker.s16, '16S', loadMarkerParams('16S'))
+        ch_asv_tables    = ch_asv_tables.mix(AMPLICON_PROCESSING_16S.out.asv_table)
+        ch_asv_seqs      = ch_asv_seqs.mix(AMPLICON_PROCESSING_16S.out.asv_seqs)
+        ch_taxonomy_tbls = ch_taxonomy_tbls.mix(AMPLICON_PROCESSING_16S.out.taxonomy)
+        ch_cutadapt_logs = ch_cutadapt_logs.mix(AMPLICON_PROCESSING_16S.out.cutadapt_log)
+    }
+    if (markers_list.contains('18S')) {
+        AMPLICON_PROCESSING_18S(ch_by_marker.s18, '18S', loadMarkerParams('18S'))
+        ch_asv_tables    = ch_asv_tables.mix(AMPLICON_PROCESSING_18S.out.asv_table)
+        ch_asv_seqs      = ch_asv_seqs.mix(AMPLICON_PROCESSING_18S.out.asv_seqs)
+        ch_taxonomy_tbls = ch_taxonomy_tbls.mix(AMPLICON_PROCESSING_18S.out.taxonomy)
+        ch_cutadapt_logs = ch_cutadapt_logs.mix(AMPLICON_PROCESSING_18S.out.cutadapt_log)
+    }
+    if (markers_list.contains('ITS')) {
+        AMPLICON_PROCESSING_ITS(ch_by_marker.its, 'ITS', loadMarkerParams('ITS'))
+        ch_asv_tables    = ch_asv_tables.mix(AMPLICON_PROCESSING_ITS.out.asv_table)
+        ch_asv_seqs      = ch_asv_seqs.mix(AMPLICON_PROCESSING_ITS.out.asv_seqs)
+        ch_taxonomy_tbls = ch_taxonomy_tbls.mix(AMPLICON_PROCESSING_ITS.out.taxonomy)
+        ch_cutadapt_logs = ch_cutadapt_logs.mix(AMPLICON_PROCESSING_ITS.out.cutadapt_log)
+    }
+    if (markers_list.contains('CO1')) {
+        AMPLICON_PROCESSING_CO1(ch_by_marker.co1, 'CO1', loadMarkerParams('CO1'))
+        ch_asv_tables    = ch_asv_tables.mix(AMPLICON_PROCESSING_CO1.out.asv_table)
+        ch_asv_seqs      = ch_asv_seqs.mix(AMPLICON_PROCESSING_CO1.out.asv_seqs)
+        ch_taxonomy_tbls = ch_taxonomy_tbls.mix(AMPLICON_PROCESSING_CO1.out.taxonomy)
+        ch_cutadapt_logs = ch_cutadapt_logs.mix(AMPLICON_PROCESSING_CO1.out.cutadapt_log)
+    }
+    if (markers_list.contains('12S')) {
+        AMPLICON_PROCESSING_12S(ch_by_marker.s12, '12S', loadMarkerParams('12S'))
+        ch_asv_tables    = ch_asv_tables.mix(AMPLICON_PROCESSING_12S.out.asv_table)
+        ch_asv_seqs      = ch_asv_seqs.mix(AMPLICON_PROCESSING_12S.out.asv_seqs)
+        ch_taxonomy_tbls = ch_taxonomy_tbls.mix(AMPLICON_PROCESSING_12S.out.taxonomy)
+        ch_cutadapt_logs = ch_cutadapt_logs.mix(AMPLICON_PROCESSING_12S.out.cutadapt_log)
+    }
+    if (markers_list.contains('RBCL')) {
+        AMPLICON_PROCESSING_RBCL(ch_by_marker.rbcl, 'RBCL', loadMarkerParams('RBCL'))
+        ch_asv_tables    = ch_asv_tables.mix(AMPLICON_PROCESSING_RBCL.out.asv_table)
+        ch_asv_seqs      = ch_asv_seqs.mix(AMPLICON_PROCESSING_RBCL.out.asv_seqs)
+        ch_taxonomy_tbls = ch_taxonomy_tbls.mix(AMPLICON_PROCESSING_RBCL.out.taxonomy)
+        ch_cutadapt_logs = ch_cutadapt_logs.mix(AMPLICON_PROCESSING_RBCL.out.cutadapt_log)
     }
 
     // ── Merge per-sample ASV tables → per-marker combined table ───────────
@@ -244,7 +273,7 @@ workflow {
 
     // ── MultiQC report ────────────────────────────────────────────────────
     ch_multiqc_files = AMPLICON_QC.out.fastqc_zip
-        .mix(AMPLICON_QC.out.cutadapt_log)
+        .mix(ch_cutadapt_logs)
         .collect()
     MULTIQC(ch_multiqc_files)
 
