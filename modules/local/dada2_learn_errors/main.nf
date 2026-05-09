@@ -2,7 +2,7 @@ process DADA2_LEARN_ERRORS {
     tag "${run_id}_${marker}"
     label 'process_high'
 
-    container 'biocontainers/bioconductor-dada2:1.30.0--r43hf17093f_0'
+    container 'quay.io/biocontainers/bioconductor-dada2:1.30.0--r43hf17093f_0'
 
     publishDir "${params.outdir}/dada2/${marker}/error_models", mode: 'copy'
 

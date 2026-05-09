@@ -2,7 +2,7 @@ process CUTADAPT {
     tag "${meta.id}_${meta.marker}"
     label 'process_medium'
 
-    container 'biocontainers/cutadapt:4.6--py39hf95cd2a_1'
+    container 'quay.io/biocontainers/cutadapt:4.6--py39hf95cd2a_1'
 
     publishDir "${params.outdir}/trimmed/${meta.marker}", mode: 'copy', pattern: '*.log'
 

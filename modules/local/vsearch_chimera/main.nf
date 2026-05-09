@@ -2,7 +2,7 @@ process VSEARCH_CHIMERA {
     tag "${meta.id}_${marker}"
     label 'process_medium'
 
-    container 'biocontainers/vsearch:2.27.0--h6a68c12_0'
+    container 'quay.io/biocontainers/vsearch:2.27.0--h6a68c12_0'
 
     publishDir "${params.outdir}/chimera_check/${marker}", mode: 'copy'
 

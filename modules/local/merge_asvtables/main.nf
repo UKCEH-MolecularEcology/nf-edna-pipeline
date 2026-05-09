@@ -2,7 +2,7 @@ process MERGE_ASV_TABLES {
     tag "merge_${marker}"
     label 'process_medium'
 
-    container 'biocontainers/bioconductor-dada2:1.30.0--r43hf17093f_0'
+    container 'quay.io/biocontainers/bioconductor-dada2:1.30.0--r43hf17093f_0'
 
     publishDir "${params.outdir}/asv_tables/${marker}", mode: 'copy'
 
