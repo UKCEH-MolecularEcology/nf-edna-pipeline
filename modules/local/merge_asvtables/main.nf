@@ -25,37 +25,42 @@ process MERGE_ASV_TABLES {
 
     # Merge sequence tables across samples (skip empty tables from zero-read samples)
     seqtabs <- lapply(rds_files, readRDS)
-    seqtabs <- Filter(function(x) ncol(x) > 0, seqtabs)
-    merged  <- if (length(seqtabs) > 0) mergeSequenceTables(seqtabs) else
-                   matrix(integer(0), nrow=0, ncol=0)
+    seqtabs <- Filter(function(x) is.matrix(x) && ncol(x) > 0 && nrow(x) > 0, seqtabs)
 
-    # Remove bimeras (chimeras) from the merged table
-    # (De novo chimera check on merged table as final step)
-    merged_nochim <- removeBimeraDenovo(
-        merged,
-        method      = "${params.dada2_chimera}",
-        multithread = ${task.cpus},
-        verbose     = TRUE
-    )
+    if (length(seqtabs) == 0) {
+        message("No non-empty sequence tables found for ", marker, " — writing empty outputs.")
+        empty_mat <- matrix(integer(0), nrow=0, ncol=0)
+        saveRDS(empty_mat, paste0(marker, ".merged_asv_table.rds"))
+        write.table(data.frame(asv_id=character(0)), paste0(marker, ".merged_asv_table.tsv"),
+                    sep="\\t", quote=FALSE, row.names=FALSE)
+        write.table(data.frame(sample=character(0), merged_in=integer(0), nonchimera=integer(0)),
+                    paste0(marker, ".read_tracking.tsv"),
+                    sep="\\t", quote=FALSE, row.names=FALSE)
+    } else {
+        merged <- mergeSequenceTables(seqtabs)
 
-    # Read tracking: how many reads survived each step
-    getN <- function(x) sum(getUniques(x))
+        merged_nochim <- removeBimeraDenovo(
+            merged,
+            method      = "${params.dada2_chimera}",
+            multithread = ${task.cpus},
+            verbose     = TRUE
+        )
 
-    read_track <- data.frame(
-        sample     = rownames(merged_nochim),
-        merged_in  = rowSums(merged),
-        nonchimera = rowSums(merged_nochim)
-    )
-    write.table(read_track, paste0(marker, ".read_tracking.tsv"),
-                sep = "\\t", quote = FALSE, row.names = FALSE)
+        read_track <- data.frame(
+            sample     = rownames(merged_nochim),
+            merged_in  = rowSums(merged),
+            nonchimera = rowSums(merged_nochim)
+        )
+        write.table(read_track, paste0(marker, ".read_tracking.tsv"),
+                    sep = "\\t", quote = FALSE, row.names = FALSE)
 
-    # Export as TSV (samples x ASVs)
-    asv_tab <- as.data.frame(t(merged_nochim))
-    asv_tab <- cbind(asv_id = rownames(asv_tab), asv_tab)
-    write.table(asv_tab, paste0(marker, ".merged_asv_table.tsv"),
-                sep = "\\t", quote = FALSE, row.names = FALSE)
+        asv_tab <- as.data.frame(t(merged_nochim))
+        asv_tab <- cbind(asv_id = rownames(asv_tab), asv_tab)
+        write.table(asv_tab, paste0(marker, ".merged_asv_table.tsv"),
+                    sep = "\\t", quote = FALSE, row.names = FALSE)
 
-    saveRDS(merged_nochim, paste0(marker, ".merged_asv_table.rds"))
+        saveRDS(merged_nochim, paste0(marker, ".merged_asv_table.rds"))
+    }
 
     writeLines(
         c(
