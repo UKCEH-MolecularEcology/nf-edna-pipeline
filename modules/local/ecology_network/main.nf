@@ -70,6 +70,7 @@ process ECOLOGY_NETWORK {
     if (nrow(asv_tab) < 5) {
         message("Too few ASVs after prevalence filter (", nrow(asv_tab), "). Skipping network.")
         writeLines(c('"${task.process}":', '    skipped: too few taxa'), "versions.yml")
+        writeLines("skipped: empty ASV table", file.path(out_dir, "skipped.txt"))
         quit(status=0)
     }
 
@@ -112,6 +113,7 @@ process ECOLOGY_NETWORK {
     if (nrow(edges) == 0) {
         message("Still no edges. Network analysis skipped.")
         writeLines(c('"${task.process}":', '    skipped: no edges'), "versions.yml")
+        writeLines("skipped: empty ASV table", file.path(out_dir, "skipped.txt"))
         quit(status=0)
     }
 

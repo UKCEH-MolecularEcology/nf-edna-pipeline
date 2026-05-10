@@ -27,6 +27,8 @@ process ECOLOGY_REPORT {
     .libPaths(c(r_lib, .libPaths()))
     options(mc.cores = ${task.cpus})
     if (length(readLines("${asv_table}")) <= 1L) {
+        writeLines(c("<html><body><p>Skipped: empty ASV table</p></body></html>"),
+                   paste0("${marker}_ecological_report.html"))
         writeLines(c('"${task.process}":', '    skipped: empty ASV table'), "versions.yml")
         quit(status=0)
     }

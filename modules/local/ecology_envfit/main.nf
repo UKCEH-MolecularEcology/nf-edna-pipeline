@@ -63,6 +63,7 @@ process ECOLOGY_ENVFIT {
     if (is.null(meta_file) || !file.exists(meta_file)) {
         message("No metadata. Skipping envfit.")
         writeLines(c('"${task.process}":', '    skipped: no metadata'), "versions.yml")
+        writeLines("skipped: empty ASV table", file.path(out_dir, "skipped.txt"))
         quit(status=0)
     }
 
@@ -76,6 +77,7 @@ process ECOLOGY_ENVFIT {
     if (nrow(asv_tab) == 0 || ncol(asv_tab) == 0) {
         message("Empty ASV table for ", marker, " — skipping envfit analysis.")
         writeLines(c('"${task.process}":', '    skipped: empty ASV table'), "versions.yml")
+        writeLines("skipped: empty ASV table", file.path(out_dir, "skipped.txt"))
         quit(status=0)
     }
 
@@ -89,6 +91,7 @@ process ECOLOGY_ENVFIT {
     if (length(env_vars) == 0) {
         message("No environmental variables found in metadata.")
         writeLines(c('"${task.process}":', '    skipped: no env vars'), "versions.yml")
+        writeLines("skipped: empty ASV table", file.path(out_dir, "skipped.txt"))
         quit(status=0)
     }
 
@@ -102,6 +105,7 @@ process ECOLOGY_ENVFIT {
     if (length(common_r) < 4) {
         message("Too few samples with complete env data (", length(common_r), ").")
         writeLines(c('"${task.process}":', '    skipped: too few samples'), "versions.yml")
+        writeLines("skipped: empty ASV table", file.path(out_dir, "skipped.txt"))
         quit(status=0)
     }
 

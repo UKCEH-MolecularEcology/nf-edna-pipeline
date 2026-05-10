@@ -75,6 +75,7 @@ process ECOLOGY_ALPHA {
     if (nrow(asv_tab) == 0 || ncol(asv_tab) == 0) {
         message("Empty ASV table for ", marker, " — skipping alpha diversity.")
         writeLines(c('"${task.process}":', '    skipped: empty ASV table'), "versions.yml")
+        writeLines("skipped: empty ASV table", file.path(out_dir, "skipped.txt"))
         quit(status=0)
     }
 

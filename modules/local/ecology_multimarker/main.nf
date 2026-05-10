@@ -84,6 +84,7 @@ process ECOLOGY_MULTIMARKER {
     if (length(data_list) < 2) {
         message("Need at least 2 markers for cross-marker analysis. Found: ", length(data_list))
         writeLines(c('"${task.process}":', '    skipped: <2 markers'), "versions.yml")
+        writeLines("skipped: empty ASV table", file.path(out_dir, "skipped.txt"))
         quit(status=0)
     }
 

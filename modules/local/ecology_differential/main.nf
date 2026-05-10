@@ -70,6 +70,7 @@ process ECOLOGY_DIFFERENTIAL {
     if (is.null(meta_file) || !file.exists(meta_file)) {
         message("No metadata provided — skipping differential abundance analysis.")
         writeLines(c('"${task.process}":', '    skipped: no metadata'), "versions.yml")
+        writeLines("skipped: empty ASV table", file.path(out_dir, "skipped.txt"))
         quit(status=0)
     }
 
@@ -87,6 +88,7 @@ process ECOLOGY_DIFFERENTIAL {
     if (nrow(asv_tab) == 0 || ncol(asv_tab) == 0) {
         message("Empty ASV table for ", marker, " — skipping differential abundance.")
         writeLines(c('"${task.process}":', '    skipped: empty ASV table'), "versions.yml")
+        writeLines("skipped: empty ASV table", file.path(out_dir, "skipped.txt"))
         quit(status=0)
     }
 
@@ -102,6 +104,7 @@ process ECOLOGY_DIFFERENTIAL {
     if (is.null(grp)) {
         message("No categorical grouping variable found. Skipping differential abundance.")
         writeLines(c('"${task.process}":', '    skipped: no group variable'), "versions.yml")
+        writeLines("skipped: empty ASV table", file.path(out_dir, "skipped.txt"))
         quit(status=0)
     }
 
@@ -111,6 +114,7 @@ process ECOLOGY_DIFFERENTIAL {
     if (length(grp_levels) < 2) {
         message("Need at least 2 groups. Found: ", length(grp_levels))
         writeLines(c('"${task.process}":', '    skipped: <2 groups'), "versions.yml")
+        writeLines("skipped: empty ASV table", file.path(out_dir, "skipped.txt"))
         quit(status=0)
     }
 
