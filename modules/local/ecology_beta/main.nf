@@ -26,6 +26,10 @@ process ECOLOGY_BETA {
     dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
     .libPaths(c(r_lib, .libPaths()))
     options(mc.cores = ${task.cpus})
+    if (length(readLines("${asv_table}")) <= 1L) {
+        writeLines(c('"${task.process}":', '    skipped: empty ASV table'), "versions.yml")
+        quit(status=0)
+    }
     .install_pkg <- function(pkg) {
         if (requireNamespace(pkg, quietly=TRUE)) return(invisible(NULL))
         install.packages(pkg, quiet=TRUE)
