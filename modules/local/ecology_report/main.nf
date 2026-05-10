@@ -26,15 +26,20 @@ process ECOLOGY_REPORT {
     dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
     .libPaths(c(r_lib, .libPaths()))
     options(mc.cores = ${task.cpus})
+    .install_pkg <- function(pkg) {
+        if (requireNamespace(pkg, quietly=TRUE)) return(invisible(NULL))
+        install.packages(pkg, quiet=TRUE)
+        if (!requireNamespace(pkg, quietly=TRUE)) {
+            Sys.sleep(runif(1, 5, 15))
+            install.packages(pkg, quiet=TRUE, INSTALL_opts="--no-lock")
+        }
+    }
 
     options(repos = c(CRAN = "https://cloud.r-project.org"))
 
 
     pkgs <- c("rmarkdown","knitr","ggplot2","dplyr","kableExtra","DT")
-    for (pkg in pkgs) {
-        if (!requireNamespace(pkg, quietly=TRUE))
-            install.packages(pkg, repos="https://cloud.r-project.org")
-    }
+    invisible(lapply(pkgs, .install_pkg))
     library(rmarkdown)
 
     marker    <- "${marker}"

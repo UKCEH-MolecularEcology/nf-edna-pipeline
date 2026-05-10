@@ -23,6 +23,14 @@ process ECOLOGY_DIVERSITY {
     dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
     .libPaths(c(r_lib, .libPaths()))
     options(mc.cores = ${task.cpus})
+    .install_pkg <- function(pkg) {
+        if (requireNamespace(pkg, quietly=TRUE)) return(invisible(NULL))
+        install.packages(pkg, quiet=TRUE)
+        if (!requireNamespace(pkg, quietly=TRUE)) {
+            Sys.sleep(runif(1, 5, 15))
+            install.packages(pkg, quiet=TRUE, INSTALL_opts="--no-lock")
+        }
+    }
 
     r_ver <- numeric_version(paste(R.version\$major, R.version\$minor, sep="."))
     bioc_ver <- if (r_ver >= "4.5") "3.22" else if (r_ver >= "4.4") "3.20" else if (r_ver >= "4.3") "3.18" else "3.16"
@@ -35,11 +43,7 @@ process ECOLOGY_DIVERSITY {
 
     pkgs <- c("phyloseq", "vegan", "ggplot2", "dplyr", "tidyr",
               "iNEXT", "microbiome", "DESeq2")
-    for (pkg in pkgs) {
-        if (!requireNamespace(pkg, quietly=TRUE)) {
-            install.packages(pkg)
-        }
-    }
+    invisible(lapply(pkgs, .install_pkg))
     suppressPackageStartupMessages({
         library(phyloseq)
         library(vegan)
