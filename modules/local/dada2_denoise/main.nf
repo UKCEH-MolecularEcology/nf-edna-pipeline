@@ -106,6 +106,7 @@ process DADA2_DENOISE {
             # Merge paired reads
             mergers <- mergePairs(dadaF, derepF, dadaR, derepR, verbose = TRUE)
             if (is.data.frame(mergers)) mergers <- list(mergers)
+            if (is.null(names(mergers))) names(mergers) <- sample_id
 
             # Make sequence table
             seqtab <- makeSequenceTable(mergers)
@@ -157,6 +158,7 @@ process DADA2_DENOISE {
 
             dadaF  <- dada(derepF, err = err_fwd, pool = pool, multithread = ${task.cpus})
             if (inherits(dadaF, "dada")) dadaF <- list(dadaF)
+            if (is.null(names(dadaF))) names(dadaF) <- sample_id
             seqtab <- makeSequenceTable(dadaF)
 
             seq_lengths <- nchar(getSequences(seqtab))
