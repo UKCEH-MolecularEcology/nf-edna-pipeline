@@ -51,13 +51,14 @@ process ECOLOGY_ALPHA {
 
 
     required <- c("phyloseq","vegan","ggplot2","dplyr","tidyr","iNEXT",
-                  "dunn.test","rstatix","ggpubr","cowplot","microbiome")
+                  "dunn.test","cowplot","microbiome")
     invisible(lapply(required, .install_pkg))
     suppressPackageStartupMessages({
         library(phyloseq); library(vegan);  library(ggplot2)
         library(dplyr);    library(tidyr);  library(iNEXT)
-        library(ggpubr);   library(cowplot); library(microbiome)
+        library(cowplot);  library(microbiome)
     })
+    has_dunn <- requireNamespace("dunn.test", quietly=TRUE)
 
     marker    <- "${marker}"
     meta_file <- ${meta_arg}
@@ -188,7 +189,8 @@ process ECOLOGY_ALPHA {
             library(dunn.test)
             dunn_list <- list()
             for (m in sig_metrics) {
-                d_res <- dunn.test(alpha_df[[m]], alpha_df[[grp]],
+                if (!has_dunn) next
+                d_res <- dunn.test::dunn.test(alpha_df[[m]], alpha_df[[grp]],
                                    method="bh", kw=FALSE)
                 dunn_list[[m]] <- data.frame(
                     metric       = m,
