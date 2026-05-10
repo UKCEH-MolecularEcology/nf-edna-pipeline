@@ -93,15 +93,13 @@ process ECOLOGY_ORDINATION {
         color_var <- NULL
     }
 
-    # Rarefy
-    min_reads <- min(sample_sums(ps))
-    if (min_reads < 1) stop("Samples with zero reads detected — check filtering.")
-    ps_rare <- rarefy_even_depth(ps, sample.size=min_reads, rngseed=42, replace=FALSE)
+    # Relative-abundance normalisation (no rarefaction)
+    ps_norm <- transform_sample_counts(ps, function(x) x / sum(x))
 
     # ── PCoA (Bray-Curtis) ───────────────────────────────────────────────
-    ord_bray <- ordinate(ps_rare, method="PCoA", distance="bray")
+    ord_bray <- ordinate(ps_norm, method="PCoA", distance="bray")
 
-    p_pcoa <- plot_ordination(ps_rare, ord_bray, type="samples",
+    p_pcoa <- plot_ordination(ps_norm, ord_bray, type="samples",
                                color = color_var) +
         geom_point(size=3) +
         stat_ellipse(aes_string(group=color_var), type="t", linetype=2, na.rm=TRUE) +
@@ -120,10 +118,10 @@ process ECOLOGY_ORDINATION {
     )
 
     # ── NMDS (Bray-Curtis) ───────────────────────────────────────────────
-    ord_nmds <- ordinate(ps_rare, method="NMDS", distance="bray",
+    ord_nmds <- ordinate(ps_norm, method="NMDS", distance="bray",
                          trymax=100, k=2)
 
-    p_nmds <- plot_ordination(ps_rare, ord_nmds, type="samples",
+    p_nmds <- plot_ordination(ps_norm, ord_nmds, type="samples",
                                color = color_var) +
         geom_point(size=3) +
         annotate("text", x=Inf, y=Inf, hjust=1.1, vjust=1.5,
@@ -135,11 +133,11 @@ process ECOLOGY_ORDINATION {
 
     # ── RDA/CCA (if metadata continuous variables present) ───────────────
     if (!is.null(meta_file) && file.exists(meta_file)) {
-        meta_df <- data.frame(sample_data(ps_rare))
+        meta_df <- data.frame(sample_data(ps_norm))
         numeric_vars <- names(meta_df)[sapply(meta_df, is.numeric)]
 
         if (length(numeric_vars) > 0) {
-            otu_mat <- t(otu_table(ps_rare))
+            otu_mat <- t(otu_table(ps_norm))
             rda_out <- rda(otu_mat ~ ., data=meta_df[, numeric_vars, drop=FALSE],
                            scale=FALSE)
             sink(file.path(out_dir, "rda_summary.txt"))

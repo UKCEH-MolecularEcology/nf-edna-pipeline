@@ -114,15 +114,13 @@ process ECOLOGY_DIVERSITY {
     ggsave(file.path(out_dir, "alpha_diversity.png"), p_alpha, width=12, height=6, dpi=150)
 
     # ── Beta diversity ────────────────────────────────────────────────────
-    # Rarefy to even depth for beta diversity
-    min_reads <- min(sample_sums(ps))
-    if (min_reads > 0) {
-        ps_rare <- rarefy_even_depth(ps, sample.size = min_reads,
-                                      rngseed = 42, replace = FALSE)
+    # Relative-abundance normalisation (no rarefaction)
+    ps_norm <- transform_sample_counts(ps, function(x) x / sum(x))
+    if (TRUE) {
 
         # Distance matrices
-        dist_bray  <- phyloseq::distance(ps_rare, method = "bray")
-        dist_jacc  <- phyloseq::distance(ps_rare, method = "jaccard", binary = TRUE)
+        dist_bray  <- phyloseq::distance(ps_norm, method = "bray")
+        dist_jacc  <- phyloseq::distance(ps_norm, method = "jaccard", binary = TRUE)
 
         write.table(as.matrix(dist_bray),
                     file.path(out_dir, "bray_curtis_distance.tsv"),
@@ -133,7 +131,7 @@ process ECOLOGY_DIVERSITY {
 
         # PERMANOVA (if metadata available)
         if (!is.null(meta_file) && file.exists(meta_file)) {
-            meta_df <- data.frame(sample_data(ps_rare))
+            meta_df <- data.frame(sample_data(ps_norm))
             # Test first variable in metadata
             first_var <- colnames(meta_df)[1]
             perm_result <- adonis2(

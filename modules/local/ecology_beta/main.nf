@@ -98,13 +98,10 @@ process ECOLOGY_BETA {
         NULL
     }
 
-    # Rarefy to minimum depth for fair comparison
-    min_reads <- min(sample_sums(ps))
-    if (min_reads < 10) stop("Too few reads after rarefaction cutoff.")
-    ps_rare <- rarefy_even_depth(ps, sample.size=min_reads, rngseed=42, replace=FALSE, verbose=FALSE)
-
-    otu_mat  <- as(otu_table(ps_rare), "matrix")
-    if (!taxa_are_rows(ps_rare)) otu_mat <- t(otu_mat)
+    # Relative-abundance normalisation (no rarefaction)
+    ps_norm  <- transform_sample_counts(ps, function(x) x / sum(x))
+    otu_mat  <- as(otu_table(ps_norm), "matrix")
+    if (!taxa_are_rows(ps_norm)) otu_mat <- t(otu_mat)
     otu_t    <- t(otu_mat)   # samples x ASVs
 
     # CLR transformation (Aitchison distance)
@@ -139,7 +136,7 @@ process ECOLOGY_BETA {
 
     # ── 2. PERMANOVA (adonis2) ────────────────────────────────────────────
     if (!is.null(grp)) {
-        meta_df  <- data.frame(sample_data(ps_rare))
+        meta_df  <- data.frame(sample_data(ps_norm))
         cat_vars <- names(meta_df)[sapply(meta_df, function(x) is.factor(x) || is.character(x))]
         num_vars <- names(meta_df)[sapply(meta_df, is.numeric)]
         all_vars <- c(cat_vars, num_vars)

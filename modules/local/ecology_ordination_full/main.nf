@@ -104,16 +104,15 @@ process ECOLOGY_ORDINATION_FULL {
         NULL
     }
 
-    min_reads <- min(sample_sums(ps))
-    ps_rare   <- rarefy_even_depth(ps, sample.size=min_reads, rngseed=42, replace=FALSE, verbose=FALSE)
-    otu_mat   <- as(otu_table(ps_rare), "matrix")
-    if (!taxa_are_rows(ps_rare)) otu_mat <- t(otu_mat)
+    ps_norm   <- transform_sample_counts(ps, function(x) x / sum(x))
+    otu_mat   <- as(otu_table(ps_norm), "matrix")
+    if (!taxa_are_rows(ps_norm)) otu_mat <- t(otu_mat)
     otu_t     <- t(otu_mat)
 
     # CLR for Aitchison / PCA
     clr_mat <- log(otu_t + 0.5) - rowMeans(log(otu_t + 0.5))
 
-    meta_df <- if (has_meta) data.frame(sample_data(ps_rare)) else data.frame(sample=rownames(otu_t))
+    meta_df <- if (has_meta) data.frame(sample_data(ps_norm)) else data.frame(sample=rownames(otu_t))
 
     # ── Ordination helper ────────────────────────────────────────────────
     make_ord_plot <- function(scores_df, xlab, ylab, title) {
