@@ -1,6 +1,6 @@
 process ECOLOGY_BETA {
     tag "beta_${marker}"
-    label 'process_medium'
+    label 'process_low'
 
     container 'rocker/verse:4.3.3'
 
@@ -22,9 +22,10 @@ process ECOLOGY_BETA {
     #!/usr/bin/env Rscript
 
     # ── Package loading ──────────────────────────────────────────────────────
-    r_lib <- file.path(getwd(), ".r_libs")
+    r_lib <- "${params.r_lib_cache}"
     dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
     .libPaths(c(r_lib, .libPaths()))
+    options(mc.cores = ${task.cpus})
 
     r_ver <- numeric_version(paste(R.version\$major, R.version\$minor, sep="."))
     bioc_ver <- if (r_ver >= "4.5") "3.22" else if (r_ver >= "4.4") "3.20" else if (r_ver >= "4.3") "3.18" else "3.16"
@@ -138,7 +139,7 @@ process ECOLOGY_BETA {
 
             # Single-factor PERMANOVA for primary group variable
             formula_str <- paste0("d_obj ~ meta_df[['", grp, "']]")
-            perm1 <- adonis2(as.formula(formula_str), permutations=999)
+            perm1 <- adonis2(as.formula(formula_str), permutations=999, parallel=${task.cpus})
             perm_results[[paste0(d_nm, "_single")]] <- data.frame(
                 distance = d_nm,
                 formula  = paste0("~ ", grp),
@@ -151,7 +152,7 @@ process ECOLOGY_BETA {
                 tryCatch({
                     formula_multi <- paste0("d_obj ~ ", paste(vars_to_use, collapse=" + "))
                     perm_m <- adonis2(as.formula(formula_multi),
-                                      data=meta_df, permutations=999)
+                                      data=meta_df, permutations=999, parallel=${task.cpus})
                     perm_results[[paste0(d_nm, "_multi")]] <- data.frame(
                         distance = d_nm,
                         formula  = formula_multi,
@@ -174,7 +175,7 @@ process ECOLOGY_BETA {
                 sub_dist <- as.dist(as.matrix(dist_methods\$bray_curtis)[idx, idx])
                 sub_meta <- meta_df[idx, , drop=FALSE]
                 formula_str <- paste0("sub_dist ~ sub_meta[['", grp, "']]")
-                pw_perm <- adonis2(as.formula(formula_str), permutations=999)
+                pw_perm <- adonis2(as.formula(formula_str), permutations=999, parallel=${task.cpus})
                 data.frame(
                     group1  = pair[1], group2 = pair[2],
                     F_value = round(pw_perm[1, "F"], 4),

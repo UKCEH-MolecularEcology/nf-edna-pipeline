@@ -1,6 +1,6 @@
 process ECOLOGY_NETWORK {
     tag "network_${marker}"
-    label 'process_medium'
+    label 'process_low'
 
     container 'rocker/verse:4.3.3'
 
@@ -21,9 +21,10 @@ process ECOLOGY_NETWORK {
     """
     #!/usr/bin/env Rscript
 
-    r_lib <- file.path(getwd(), ".r_libs")
+    r_lib <- "${params.r_lib_cache}"
     dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
     .libPaths(c(r_lib, .libPaths()))
+    options(mc.cores = ${task.cpus})
 
     options(repos = c(CRAN = "https://cloud.r-project.org"))
 

@@ -1,6 +1,6 @@
 process ECOLOGY_ENVFIT {
     tag "envfit_${marker}"
-    label 'process_medium'
+    label 'process_low'
 
     container 'rocker/verse:4.3.3'
 
@@ -24,9 +24,10 @@ process ECOLOGY_ENVFIT {
     """
     #!/usr/bin/env Rscript
 
-    r_lib <- file.path(getwd(), ".r_libs")
+    r_lib <- "${params.r_lib_cache}"
     dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
     .libPaths(c(r_lib, .libPaths()))
+    options(mc.cores = ${task.cpus})
 
     options(repos = c(CRAN = "https://cloud.r-project.org"))
 
@@ -97,7 +98,7 @@ process ECOLOGY_ENVFIT {
     env_sub <- env_clean[common_r, , drop=FALSE]
 
     # ── 1. envfit: vector fitting onto NMDS ordination ────────────────────
-    nmds_fit <- metaMDS(otu_sub, distance="bray", k=2, trymax=200, trace=FALSE)
+    nmds_fit <- metaMDS(otu_sub, distance="bray", k=2, trymax=200, trace=FALSE, parallel=${task.cpus})
     ef       <- envfit(nmds_fit, env_sub, permutations=999, na.rm=TRUE)
 
     sink(file.path(out_dir, "envfit_summary.txt"))

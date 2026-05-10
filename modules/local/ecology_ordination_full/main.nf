@@ -1,6 +1,6 @@
 process ECOLOGY_ORDINATION_FULL {
     tag "ordination_full_${marker}"
-    label 'process_medium'
+    label 'process_low'
 
     container 'rocker/verse:4.3.3'
 
@@ -22,9 +22,10 @@ process ECOLOGY_ORDINATION_FULL {
     #!/usr/bin/env Rscript
 
     # ── Package loading ──────────────────────────────────────────────────────
-    r_lib <- file.path(getwd(), ".r_libs")
+    r_lib <- "${params.r_lib_cache}"
     dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
     .libPaths(c(r_lib, .libPaths()))
+    options(mc.cores = ${task.cpus})
 
     r_ver <- numeric_version(paste(R.version\$major, R.version\$minor, sep="."))
     bioc_ver <- if (r_ver >= "4.5") "3.22" else if (r_ver >= "4.4") "3.20" else if (r_ver >= "4.3") "3.18" else "3.16"
@@ -149,7 +150,7 @@ process ECOLOGY_ORDINATION_FULL {
     save_plot(p_ait, "pcoa_aitchison")
 
     # ── 3. NMDS (Bray-Curtis, k=2) ───────────────────────────────────────
-    nmds_fit <- metaMDS(otu_t, distance="bray", k=2, trymax=200, trace=FALSE)
+    nmds_fit <- metaMDS(otu_t, distance="bray", k=2, trymax=200, trace=FALSE, parallel=${task.cpus})
     nmds_df  <- data.frame(nmds_fit\$points)
     colnames(nmds_df) <- c("Dim1","Dim2")
     nmds_df  <- cbind(nmds_df, meta_df[rownames(nmds_df), , drop=FALSE])
