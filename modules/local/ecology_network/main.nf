@@ -21,10 +21,16 @@ process ECOLOGY_NETWORK {
     """
     #!/usr/bin/env Rscript
 
+    r_lib <- file.path(getwd(), ".r_libs")
+    dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
+    .libPaths(c(r_lib, .libPaths()))
+
+    options(repos = c(CRAN = "https://cloud.r-project.org"))
+
     pkgs <- c("igraph","ggraph","ggplot2","dplyr","Hmisc","psych","vegan")
     for (pkg in pkgs) {
         if (!requireNamespace(pkg, quietly=TRUE))
-            install.packages(pkg, repos="https://cloud.r-project.org")
+            install.packages(pkg)
     }
     suppressPackageStartupMessages({
         library(igraph); library(ggraph); library(ggplot2)

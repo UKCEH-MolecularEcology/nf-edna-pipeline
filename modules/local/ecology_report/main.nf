@@ -22,6 +22,13 @@ process ECOLOGY_REPORT {
     """
     #!/usr/bin/env Rscript
 
+    r_lib <- file.path(getwd(), ".r_libs")
+    dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
+    .libPaths(c(r_lib, .libPaths()))
+
+    options(repos = c(CRAN = "https://cloud.r-project.org"))
+
+
     pkgs <- c("rmarkdown","knitr","ggplot2","dplyr","kableExtra","DT")
     for (pkg in pkgs) {
         if (!requireNamespace(pkg, quietly=TRUE))

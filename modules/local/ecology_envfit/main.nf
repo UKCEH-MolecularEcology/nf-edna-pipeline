@@ -24,6 +24,13 @@ process ECOLOGY_ENVFIT {
     """
     #!/usr/bin/env Rscript
 
+    r_lib <- file.path(getwd(), ".r_libs")
+    dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
+    .libPaths(c(r_lib, .libPaths()))
+
+    options(repos = c(CRAN = "https://cloud.r-project.org"))
+
+
     # ── Package loading ──────────────────────────────────────────────────────
     required <- c("vegan", "ggplot2", "dplyr", "tidyr")
     for (pkg in required) {
