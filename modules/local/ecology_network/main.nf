@@ -2,7 +2,7 @@ process ECOLOGY_NETWORK {
     tag "network_${marker}"
     label 'process_medium'
 
-    container 'ghcr.io/rocker-project/verse:4.3.3'
+    container 'rocker/verse:4.3.3'
 
     publishDir "${params.outdir}/full_ecology/${marker}/05_co_occurrence_network", mode: 'copy'
 

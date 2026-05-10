@@ -2,7 +2,7 @@ process ECOLOGY_BARPLOT {
     tag "barplot_${marker}"
     label 'process_medium'
 
-    container 'ghcr.io/rocker-project/verse:4.3.3'
+    container 'rocker/verse:4.3.3'
 
     publishDir "${params.outdir}/ecology/${marker}/composition", mode: 'copy'
 

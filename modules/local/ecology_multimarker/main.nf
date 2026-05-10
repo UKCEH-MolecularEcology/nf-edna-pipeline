@@ -2,7 +2,7 @@ process ECOLOGY_MULTIMARKER {
     tag "multimarker"
     label 'process_medium'
 
-    container 'ghcr.io/rocker-project/verse:4.3.3'
+    container 'rocker/verse:4.3.3'
 
     publishDir "${params.outdir}/full_ecology/cross_marker", mode: 'copy'
 

@@ -2,7 +2,7 @@ process ECOLOGY_BETA {
     tag "beta_${marker}"
     label 'process_medium'
 
-    container 'ghcr.io/rocker-project/verse:4.3.3'
+    container 'rocker/verse:4.3.3'
 
     publishDir "${params.outdir}/full_ecology/${marker}/02_beta_diversity", mode: 'copy'
 
