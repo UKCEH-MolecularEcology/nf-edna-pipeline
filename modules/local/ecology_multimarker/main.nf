@@ -262,7 +262,7 @@ process ECOLOGY_MULTIMARKER {
 
     p_comb <- ggplot(comb_df, aes(x=PC1, y=PC2, label=sample)) +
         geom_point(size=3, alpha=0.85,
-                   aes_string(color=if (has_meta && !is.null(first_cat)) first_cat else NULL)) +
+                   aes(color=if (has_meta && !is.null(first_cat)) .data[[first_cat]] else NULL)) +
         theme_bw(base_size=12) +
         labs(title="Combined Multi-marker PCoA (Bray-Curtis)",
              x=paste0("PC1 (", var_exp[1], "%)"),

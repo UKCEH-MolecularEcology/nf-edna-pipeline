@@ -120,7 +120,7 @@ process ECOLOGY_BARPLOT {
         df[[rank]][is.na(df[[rank]])] <- "Unclassified"
 
         # Stacked barplot
-        p <- ggplot(df, aes_string(x="Sample", y="Abundance", fill=rank)) +
+        p <- ggplot(df, aes(x=Sample, y=Abundance, fill=.data[[rank]])) +
             geom_bar(stat="identity") +
             scale_y_continuous(labels = function(x) paste0(x, "%")) +
             theme_bw() +
@@ -161,11 +161,13 @@ process ECOLOGY_BARPLOT {
     }
     colnames(heat_mat) <- tax_labels
 
+    if (nrow(heat_mat) >= 2 && ncol(heat_mat) >= 2) {
     pdf(file.path(out_dir, "top_asvs_heatmap.pdf"), width=14, height=8)
     heatmap(heat_mat, Rowv=NA, Colv=NA, col=heat.colors(256),
             margins=c(12,6), main=paste(marker, "- Top ASVs (Rel. Abund. %)"),
             cexCol=0.6, cexRow=0.8)
     dev.off()
+    }
 
     } # end ntaxa > 0
     message("Composition analysis complete.")

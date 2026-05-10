@@ -119,7 +119,7 @@ process ECOLOGY_ORDINATION {
     p_pcoa <- plot_ordination(ps_norm, ord_bray, type="samples",
                                color = color_var) +
         geom_point(size=3) +
-        stat_ellipse(aes_string(group=color_var), type="t", linetype=2, na.rm=TRUE) +
+        stat_ellipse(aes(group=if(!is.null(color_var)) .data[[color_var]] else NULL), type="t", linetype=2, na.rm=TRUE) +
         theme_bw() +
         labs(title = paste(marker, "- PCoA (Bray-Curtis)"))
     ggsave(file.path(out_dir, "pcoa_bray_curtis.pdf"), p_pcoa, width=8, height=6)

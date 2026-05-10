@@ -131,7 +131,7 @@ process ECOLOGY_ORDINATION_FULL {
 
     # ── Ordination helper ────────────────────────────────────────────────
     make_ord_plot <- function(scores_df, xlab, ylab, title) {
-        p <- ggplot(scores_df, aes_string(x="Dim1", y="Dim2",
+        p <- ggplot(scores_df, aes(x=Dim1, y=Dim2,
                                            color = if (!is.null(grp) && grp %in% colnames(scores_df)) grp else NULL,
                                            shape = if (!is.null(grp) && grp %in% colnames(scores_df)) grp else NULL)) +
             geom_point(size=3, alpha=0.85) +

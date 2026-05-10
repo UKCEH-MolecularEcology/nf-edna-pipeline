@@ -140,7 +140,7 @@ process ECOLOGY_ALPHA {
 
     for (m in metrics_to_plot) {
         if (!m %in% colnames(alpha_df)) next
-        p <- ggplot(alpha_df, aes_string(x = if (!is.null(grp)) grp else "\"all\"",
+        p <- ggplot(alpha_df, aes(x = if (!is.null(grp)) .data[[grp]] else "all",
                                           y = m,
                                           fill = if (!is.null(grp)) grp else "NULL")) +
             geom_boxplot(alpha=0.7, outlier.shape=NA) +

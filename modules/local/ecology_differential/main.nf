@@ -144,14 +144,14 @@ process ECOLOGY_DIFFERENTIAL {
         df\$direction   <- ifelse(df[[fc_col]] > 1, "Up", ifelse(df[[fc_col]] < -1, "Down", "NS"))
         df\$direction[!df\$significant] <- "NS"
 
-        ggplot(df, aes_string(x=fc_col, y=paste0("-log10(", pval_col, " + 1e-300)"))) +
+        ggplot(df, aes(x=.data[[fc_col]], y=-log10(.data[[pval_col]] + 1e-300))) +
             geom_point(aes(color=direction), alpha=0.5, size=1.5) +
             scale_color_manual(values=c("Up"="#C0392B","Down"="#2980B9","NS"="grey60")) +
             geom_vline(xintercept=c(-1,1), linetype="dashed", color="grey40") +
             geom_hline(yintercept=-log10(0.05), linetype="dashed", color="grey40") +
             geom_text_repel(
                 data=subset(df, significant),
-                aes_string(label="tax_label"), size=2.5, max.overlaps=15
+                aes(label=tax_label), size=2.5, max.overlaps=15
             ) +
             theme_bw(base_size=12) +
             labs(title=title, x="log2 Fold Change",

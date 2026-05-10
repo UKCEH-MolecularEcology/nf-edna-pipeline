@@ -173,7 +173,7 @@ process ECOLOGY_ENVFIT {
         vd[vd\$p_value < 0.05, , drop=FALSE]
     } else { data.frame() }
 
-    p_ef <- ggplot(nmds_df, aes_string(x="NMDS1", y="NMDS2",
+    p_ef <- ggplot(nmds_df, aes(x=NMDS1, y=NMDS2,
                                         color = if (!is.null(grp)) grp else NULL)) +
         geom_point(size=3, alpha=0.85) +
         theme_bw(base_size=12) +
