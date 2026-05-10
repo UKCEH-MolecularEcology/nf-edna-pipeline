@@ -37,7 +37,7 @@ process MERGE_ASV_TABLES {
                     paste0(marker, ".read_tracking.tsv"),
                     sep="\\t", quote=FALSE, row.names=FALSE)
     } else {
-        merged <- mergeSequenceTables(seqtabs)
+        merged <- if (length(seqtabs) == 1) seqtabs[[1]] else mergeSequenceTables(tables = seqtabs)
 
         merged_nochim <- removeBimeraDenovo(
             merged,
