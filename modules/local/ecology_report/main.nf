@@ -2,7 +2,7 @@ process ECOLOGY_REPORT {
     tag "report_${marker}"
     label 'process_low'
 
-    container 'rocker/verse:4.3.3'
+    container 'ghcr.io/ukceh-molecularecology/nf-edna-pipeline/ecology:r4.3.3'
 
     publishDir "${params.outdir}/full_ecology/${marker}/00_report", mode: 'copy'
 

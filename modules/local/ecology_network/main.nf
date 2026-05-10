@@ -2,7 +2,7 @@ process ECOLOGY_NETWORK {
     tag "network_${marker}"
     label 'process_low'
 
-    container 'rocker/verse:4.3.3'
+    container 'ghcr.io/ukceh-molecularecology/nf-edna-pipeline/ecology:r4.3.3'
 
     publishDir "${params.outdir}/full_ecology/${marker}/05_co_occurrence_network", mode: 'copy'
 

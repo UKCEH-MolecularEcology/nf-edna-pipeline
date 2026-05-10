@@ -2,7 +2,7 @@ process ECOLOGY_ORDINATION_FULL {
     tag "ordination_full_${marker}"
     label 'process_low'
 
-    container 'rocker/verse:4.3.3'
+    container 'ghcr.io/ukceh-molecularecology/nf-edna-pipeline/ecology:r4.3.3'
 
     publishDir "${params.outdir}/full_ecology/${marker}/03_ordination", mode: 'copy'
 
