@@ -59,6 +59,12 @@ process ECOLOGY_BETA {
     common  <- intersect(rownames(asv_tab), rownames(tax_tab))
     asv_tab <- asv_tab[common, , drop=FALSE]
 
+    if (nrow(asv_tab) == 0 || ncol(asv_tab) == 0) {
+        message("Empty ASV table for ", marker, " — skipping beta diversity.")
+        writeLines(c('"${task.process}":', '    skipped: empty ASV table'), "versions.yml")
+        quit(status=0)
+    }
+
     OTU <- otu_table(as.matrix(asv_tab), taxa_are_rows=TRUE)
     TAX <- tax_table(as.matrix(tax_tab[common, , drop=FALSE]))
 

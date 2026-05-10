@@ -73,6 +73,12 @@ process ECOLOGY_DIFFERENTIAL {
     tax_tab  <- tax_tab[common_asvs, , drop=FALSE]
     meta     <- meta[common_samp, , drop=FALSE]
 
+    if (nrow(asv_tab) == 0 || ncol(asv_tab) == 0) {
+        message("Empty ASV table for ", marker, " — skipping differential abundance.")
+        writeLines(c('"${task.process}":', '    skipped: empty ASV table'), "versions.yml")
+        quit(status=0)
+    }
+
     # Determine grouping variable
     grp <- if (!is.null(group_var) && group_var %in% colnames(meta)) {
         group_var

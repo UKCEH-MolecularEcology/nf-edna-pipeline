@@ -61,6 +61,12 @@ process ECOLOGY_ENVFIT {
     asv_tab  <- asv_tab[, common_s, drop=FALSE]
     meta     <- meta[common_s, , drop=FALSE]
 
+    if (nrow(asv_tab) == 0 || ncol(asv_tab) == 0) {
+        message("Empty ASV table for ", marker, " — skipping envfit analysis.")
+        writeLines(c('"${task.process}":', '    skipped: empty ASV table'), "versions.yml")
+        quit(status=0)
+    }
+
     otu_t    <- t(asv_tab)
     clr_mat  <- log(otu_t + 0.5) - rowMeans(log(otu_t + 0.5))
 

@@ -60,6 +60,12 @@ process ECOLOGY_INDICATORS {
     asv_tab <- asv_tab[common, , drop=FALSE]
     tax_tab <- tax_tab[common, , drop=FALSE]
 
+    if (nrow(asv_tab) == 0 || ncol(asv_tab) == 0) {
+        message("Empty ASV table for ", marker, " — skipping indicator species analysis.")
+        writeLines(c('"${task.process}":', '    skipped: empty ASV table'), "versions.yml")
+        quit(status=0)
+    }
+
     has_meta <- !is.null(meta_file) && file.exists(meta_file)
     meta     <- if (has_meta) {
         read.table(meta_file, sep="\\t", header=TRUE, row.names=1, check.names=FALSE)

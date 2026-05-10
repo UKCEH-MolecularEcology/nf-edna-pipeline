@@ -64,6 +64,10 @@ process ECOLOGY_MULTIMARKER {
             next
         }
         asv_t <- read.table(af[1], sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
+        if (nrow(asv_t) == 0 || ncol(asv_t) == 0) {
+            message("Empty ASV table for marker: ", m, ". Skipping.")
+            next
+        }
         tax_t <- if (length(tf) > 0) {
             read.table(tf[1], sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
         } else {
