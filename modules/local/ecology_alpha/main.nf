@@ -67,6 +67,7 @@ process ECOLOGY_ALPHA {
 
     # ── Load data → phyloseq ─────────────────────────────────────────────
     asv_tab <- read.table("${asv_table}", sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
+    asv_tab[is.na(asv_tab)] <- 0
     tax_tab <- read.table("${taxonomy}",  sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
     common  <- intersect(rownames(asv_tab), rownames(tax_tab))
     asv_tab <- asv_tab[common, , drop=FALSE]
@@ -91,6 +92,14 @@ process ECOLOGY_ALPHA {
         ps       <- phyloseq(OTU, TAX, sample_data(meta))
     } else {
         ps <- phyloseq(OTU, TAX)
+    }
+
+    ps <- prune_samples(sample_sums(ps) > 0, ps)
+    ps <- prune_taxa(taxa_sums(ps) > 0, ps)
+    if (nsamples(ps) == 0 || ntaxa(ps) == 0) {
+        writeLines("skipped: no data after filtering", file.path(out_dir, "skipped.txt"))
+        writeLines(c(paste0('"${task.process}":'), '    skipped: no data after filtering'), "versions.yml")
+        quit(status=0)
     }
 
     # Determine grouping variable
@@ -154,7 +163,9 @@ process ECOLOGY_ALPHA {
             if (!m %in% colnames(alpha_df)) next
             vals   <- alpha_df[[m]]
             groups <- alpha_df[[grp]]
-            kw_res <- kruskal.test(vals ~ groups)
+            kw_res <- tryCatch(kruskal.test(vals ~ groups),
+                               error = function(e) { message("Kruskal-Wallis failed for ", m, ": ", conditionMessage(e)); NULL })
+            if (is.null(kw_res)) next
             stat_results[[m]] <- data.frame(
                 metric    = m,
                 test      = "Kruskal-Wallis",
@@ -166,6 +177,7 @@ process ECOLOGY_ALPHA {
                             ifelse(kw_res\$p.value < 0.05,  "*", "ns")))
             )
         }
+        if (length(stat_results) > 0) {
         stat_df <- do.call(rbind, stat_results)
         write.table(stat_df, file.path(out_dir, "alpha_kruskal_wallis.tsv"),
                     sep="\\t", quote=FALSE, row.names=FALSE)
@@ -189,6 +201,7 @@ process ECOLOGY_ALPHA {
             write.table(dunn_df, file.path(out_dir, "alpha_dunn_posthoc.tsv"),
                         sep="\\t", quote=FALSE, row.names=FALSE)
         }
+        } # end if (length(stat_results) > 0)
     }
 
     # ── 4. Rarefaction curves (iNEXT) ────────────────────────────────────

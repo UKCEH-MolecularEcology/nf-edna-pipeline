@@ -66,6 +66,7 @@ process ECOLOGY_DIVERSITY {
     # ── Load data ────────────────────────────────────────────────────────────
     asv_tab <- read.table("${asv_table}", sep="\\t", header=TRUE,
                           row.names=1, check.names=FALSE)
+    asv_tab[is.na(asv_tab)] <- 0
     tax_tab <- read.table("${taxonomy}", sep="\\t", header=TRUE,
                           row.names=1, check.names=FALSE)
 
@@ -94,6 +95,14 @@ process ECOLOGY_DIVERSITY {
         ps      <- phyloseq(OTU, TAX)
     }
 
+    ps <- prune_samples(sample_sums(ps) > 0, ps)
+    ps <- prune_taxa(taxa_sums(ps) > 0, ps)
+    if (nsamples(ps) == 0 || ntaxa(ps) == 0) {
+        writeLines("skipped: no data after filtering", file.path(out_dir, "skipped.txt"))
+        writeLines(c(paste0('"${task.process}":'), '    skipped: no data after filtering'), "versions.yml")
+        quit(status=0)
+    }
+
     message("Phyloseq object: ", ntaxa(ps), " taxa x ", nsamples(ps), " samples")
 
     # ── Alpha diversity ───────────────────────────────────────────────────
@@ -116,7 +125,11 @@ process ECOLOGY_DIVERSITY {
     # ── Beta diversity ────────────────────────────────────────────────────
     # Relative-abundance normalisation (no rarefaction)
     ps_norm <- transform_sample_counts(ps, function(x) x / sum(x))
-    if (TRUE) {
+    # Clean any NaN that may arise (should not happen after prune_samples, but be safe)
+    otu_norm_mat <- as(otu_table(ps_norm), "matrix")
+    otu_norm_mat[is.nan(otu_norm_mat) | is.na(otu_norm_mat)] <- 0
+    otu_table(ps_norm) <- otu_table(otu_norm_mat, taxa_are_rows=taxa_are_rows(ps_norm))
+    if (nsamples(ps_norm) >= 3) {
 
         # Distance matrices
         dist_bray  <- phyloseq::distance(ps_norm, method = "bray")
@@ -134,20 +147,26 @@ process ECOLOGY_DIVERSITY {
             meta_df <- data.frame(sample_data(ps_norm))
             # Test first variable in metadata
             first_var <- colnames(meta_df)[1]
-            perm_result <- adonis2(
-                dist_bray ~ meta_df[[first_var]],
-                permutations = 999
-            )
-            write.table(data.frame(perm_result),
-                        file.path(out_dir, "permanova_bray.tsv"),
-                        sep="\\t", quote=FALSE)
+            tryCatch({
+                perm_result <- adonis2(
+                    dist_bray ~ meta_df[[first_var]],
+                    permutations = 999
+                )
+                write.table(data.frame(perm_result),
+                            file.path(out_dir, "permanova_bray.tsv"),
+                            sep="\\t", quote=FALSE)
+            }, error=function(e) message("PERMANOVA failed: ", conditionMessage(e)))
 
             # ANOSIM
-            ano_result <- anosim(dist_bray, meta_df[[first_var]], permutations=999)
-            sink(file.path(out_dir, "anosim_bray.txt"))
-            print(ano_result)
-            sink()
+            tryCatch({
+                ano_result <- anosim(dist_bray, meta_df[[first_var]], permutations=999)
+                sink(file.path(out_dir, "anosim_bray.txt"))
+                print(ano_result)
+                sink()
+            }, error=function(e) message("ANOSIM failed: ", conditionMessage(e)))
         }
+    } else {
+        message("Too few samples for beta diversity (", nsamples(ps_norm), "). Skipping distance matrices.")
     }
 
     # ── Save phyloseq object ──────────────────────────────────────────────

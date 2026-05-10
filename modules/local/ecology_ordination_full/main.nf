@@ -72,6 +72,7 @@ process ECOLOGY_ORDINATION_FULL {
 
     # ── Load data ────────────────────────────────────────────────────────
     asv_tab <- read.table("${asv_table}", sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
+    asv_tab[is.na(asv_tab)] <- 0
     tax_tab <- read.table("${taxonomy}",  sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
     common  <- intersect(rownames(asv_tab), rownames(tax_tab))
     asv_tab <- asv_tab[common, , drop=FALSE]
@@ -104,9 +105,23 @@ process ECOLOGY_ORDINATION_FULL {
         NULL
     }
 
+    ps <- prune_samples(sample_sums(ps) > 0, ps)
+    ps <- prune_taxa(taxa_sums(ps) > 0, ps)
+    if (nsamples(ps) == 0 || ntaxa(ps) == 0) {
+        writeLines("skipped: no data after filtering", file.path(out_dir, "skipped.txt"))
+        writeLines(c(paste0('"${task.process}":'), '    skipped: no data after filtering'), "versions.yml")
+        quit(status=0)
+    }
+    if (nsamples(ps) < 3) {
+        writeLines("skipped: too few samples for ordination", file.path(out_dir, "skipped.txt"))
+        writeLines(c(paste0('"${task.process}":'), '    skipped: too few samples'), "versions.yml")
+        quit(status=0)
+    }
+
     ps_norm   <- transform_sample_counts(ps, function(x) x / sum(x))
     otu_mat   <- as(otu_table(ps_norm), "matrix")
     if (!taxa_are_rows(ps_norm)) otu_mat <- t(otu_mat)
+    otu_mat[is.nan(otu_mat) | is.na(otu_mat)] <- 0
     otu_t     <- t(otu_mat)
 
     # CLR for Aitchison / PCA
@@ -132,7 +147,9 @@ process ECOLOGY_ORDINATION_FULL {
     dist_bray <- vegdist(otu_t, method="bray")
     pcoa_bray <- cmdscale(dist_bray, k=min(5, nrow(otu_t)-1), eig=TRUE)
     var_exp   <- round(pcoa_bray\$eig / sum(pcoa_bray\$eig[pcoa_bray\$eig > 0]) * 100, 1)
-    pcoa_df   <- data.frame(pcoa_bray\$points[,1:2], check.names=FALSE)
+    var_exp   <- c(var_exp, 0, 0)[1:max(2, length(var_exp))]  # ensure at least 2 values
+    pcoa_df   <- data.frame(pcoa_bray\$points[,1:min(2,ncol(pcoa_bray\$points))], check.names=FALSE)
+    if (ncol(pcoa_df) == 1) pcoa_df\$Dim2 <- 0
     colnames(pcoa_df) <- c("Dim1","Dim2")
     pcoa_df   <- cbind(pcoa_df, meta_df[rownames(pcoa_df), , drop=FALSE])
 
@@ -149,7 +166,8 @@ process ECOLOGY_ORDINATION_FULL {
     dist_ait  <- dist(clr_mat)
     pcoa_ait  <- cmdscale(dist_ait, k=min(5, nrow(clr_mat)-1), eig=TRUE)
     var_ait   <- round(pcoa_ait\$eig / sum(pcoa_ait\$eig[pcoa_ait\$eig > 0]) * 100, 1)
-    pcoa_ait_df <- data.frame(pcoa_ait\$points[,1:2])
+    var_ait   <- c(var_ait, 0, 0)[1:max(2, length(var_ait))]
+    pcoa_ait_df <- data.frame(pcoa_ait\$points[,1:min(2,ncol(pcoa_ait\$points))])
     colnames(pcoa_ait_df) <- c("Dim1","Dim2")
     pcoa_ait_df <- cbind(pcoa_ait_df, meta_df[rownames(pcoa_ait_df), , drop=FALSE])
 
@@ -160,6 +178,8 @@ process ECOLOGY_ORDINATION_FULL {
     save_plot(p_ait, "pcoa_aitchison")
 
     # ── 3. NMDS (Bray-Curtis, k=2) ───────────────────────────────────────
+    p_nmds <- NULL
+    tryCatch({
     nmds_fit <- metaMDS(otu_t, distance="bray", k=2, trymax=200, trace=FALSE, parallel=${task.cpus})
     nmds_df  <- data.frame(nmds_fit\$points)
     colnames(nmds_df) <- c("Dim1","Dim2")
@@ -175,6 +195,7 @@ process ECOLOGY_ORDINATION_FULL {
     pdf(file.path(out_dir, "nmds_shepard.pdf"), width=7, height=6)
     stressplot(nmds_fit, main=paste(marker, "- NMDS Shepard Diagram"))
     dev.off()
+    }, error=function(e) message("NMDS failed: ", conditionMessage(e)))
 
     # ── 4. PCA (CLR-transformed) ─────────────────────────────────────────
     pca_res  <- prcomp(clr_mat, scale.=FALSE, center=TRUE)
@@ -344,13 +365,16 @@ process ECOLOGY_ORDINATION_FULL {
     }
 
     # ── 8. Ordination panel summary ───────────────────────────────────────
-    plots_to_combine <- list(p_pcoa, p_ait, p_nmds, p_pca)
+    plots_to_combine <- Filter(Negate(is.null), list(p_pcoa, p_ait, p_nmds, p_pca))
     labels_panel     <- c("A) PCoA Bray-Curtis", "B) PCoA Aitchison",
-                          "C) NMDS Bray-Curtis", "D) PCA CLR")
-    panel <- plot_grid(plotlist=plots_to_combine, nrow=2, ncol=2,
-                       labels=labels_panel, label_size=9)
-    ggsave(file.path(out_dir, "ordination_panel.pdf"), panel, width=16, height=12)
-    ggsave(file.path(out_dir, "ordination_panel.png"), panel, width=16, height=12, dpi=150)
+                          "C) NMDS Bray-Curtis", "D) PCA CLR")[!sapply(list(p_pcoa, p_ait, p_nmds, p_pca), is.null)]
+    if (length(plots_to_combine) > 0) {
+        n_cols <- min(2, length(plots_to_combine))
+        panel <- plot_grid(plotlist=plots_to_combine, ncol=n_cols,
+                           labels=labels_panel, label_size=9)
+        ggsave(file.path(out_dir, "ordination_panel.pdf"), panel, width=16, height=12)
+        ggsave(file.path(out_dir, "ordination_panel.png"), panel, width=16, height=12, dpi=150)
+    }
 
     message("Full ordination analysis complete: ", out_dir)
 

@@ -64,6 +64,7 @@ process ECOLOGY_BARPLOT {
 
     asv_tab <- read.table("${asv_table}", sep="\\t", header=TRUE,
                           row.names=1, check.names=FALSE)
+    asv_tab[is.na(asv_tab)] <- 0
     tax_tab <- read.table("${taxonomy}", sep="\\t", header=TRUE,
                           row.names=1, check.names=FALSE)
 
@@ -87,6 +88,14 @@ process ECOLOGY_BARPLOT {
         ps    <- phyloseq(OTU, TAX, sample_data(meta))
     } else {
         ps    <- phyloseq(OTU, TAX)
+    }
+
+    ps <- prune_samples(sample_sums(ps) > 0, ps)
+    ps <- prune_taxa(taxa_sums(ps) > 0, ps)
+    if (nsamples(ps) == 0 || ntaxa(ps) == 0) {
+        writeLines("skipped: no data after filtering", file.path(out_dir, "skipped.txt"))
+        writeLines(c(paste0('"${task.process}":'), '    skipped: no data after filtering'), "versions.yml")
+        quit(status=0)
     }
 
     # Transform to relative abundance

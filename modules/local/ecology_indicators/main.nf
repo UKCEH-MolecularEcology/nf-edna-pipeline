@@ -66,6 +66,7 @@ process ECOLOGY_INDICATORS {
 
     # ── Load data ────────────────────────────────────────────────────────
     asv_tab <- read.table("${asv_table}", sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
+    asv_tab[is.na(asv_tab)] <- 0
     tax_tab <- read.table("${taxonomy}",  sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
     common  <- intersect(rownames(asv_tab), rownames(tax_tab))
     asv_tab <- asv_tab[common, , drop=FALSE]
@@ -94,6 +95,20 @@ process ECOLOGY_INDICATORS {
         NULL
     }
 
+    # Remove zero-sum samples and zero-sum ASVs
+    keep_samp <- colSums(asv_tab) > 0
+    asv_tab   <- asv_tab[, keep_samp, drop=FALSE]
+    keep_asv  <- rowSums(asv_tab) > 0
+    asv_tab   <- asv_tab[keep_asv, , drop=FALSE]
+    tax_tab   <- tax_tab[rownames(asv_tab), , drop=FALSE]
+
+    if (nrow(asv_tab) == 0 || ncol(asv_tab) == 0) {
+        message("No data after zero-sum filtering for ", marker, " — skipping.")
+        writeLines(c(paste0('"${task.process}":'), '    skipped: no data after filtering'), "versions.yml")
+        writeLines("skipped: no data after filtering", file.path(out_dir, "skipped.txt"))
+        quit(status=0)
+    }
+
     otu_t <- t(asv_tab)
 
     # Tax label helper
@@ -110,7 +125,13 @@ process ECOLOGY_INDICATORS {
         groups   <- as.character(meta[common_s, grp])
         otu_sub  <- otu_t[common_s, , drop=FALSE]
 
-        tryCatch({
+        grp_tbl  <- table(groups)
+        enough_groups <- length(grp_tbl) >= 2 && all(grp_tbl >= 2)
+        if (!enough_groups) {
+            message("IndVal/SIMPER require >=2 groups each with >=2 samples. Skipping.")
+        }
+
+        if (enough_groups) tryCatch({
             indval_res <- multipatt(otu_sub, groups,
                                     control=how(nperm=999),
                                     func="IndVal.g", duleg=FALSE)
@@ -149,7 +170,7 @@ process ECOLOGY_INDICATORS {
         }, error=function(e) message("IndVal failed: ", conditionMessage(e)))
 
         # ── 2. SIMPER ──────────────────────────────────────────────────────
-        tryCatch({
+        if (enough_groups) tryCatch({
             simp_res <- simper(otu_sub, groups, permutations=999)
             sink(file.path(out_dir, "simper_summary.txt"))
             print(summary(simp_res, ordered=TRUE))
@@ -229,6 +250,9 @@ process ECOLOGY_INDICATORS {
         common_s <- intersect(rownames(meta), colnames(asv_tab))
         groups   <- as.character(meta[common_s, grp])
         otu_sub  <- asv_tab[, common_s, drop=FALSE]
+        col_sums <- colSums(otu_sub)
+        otu_sub  <- otu_sub[, col_sums > 0, drop=FALSE]
+        groups   <- groups[col_sums > 0]
         otu_rel_sub <- sweep(otu_sub, 2, colSums(otu_sub), "/") * 100
 
         group_stats <- lapply(unique(groups), function(g) {

@@ -66,6 +66,7 @@ process ECOLOGY_BETA {
 
     # ── Load data ────────────────────────────────────────────────────────
     asv_tab <- read.table("${asv_table}", sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
+    asv_tab[is.na(asv_tab)] <- 0
     tax_tab <- read.table("${taxonomy}",  sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
     common  <- intersect(rownames(asv_tab), rownames(tax_tab))
     asv_tab <- asv_tab[common, , drop=FALSE]
@@ -98,11 +99,27 @@ process ECOLOGY_BETA {
         NULL
     }
 
+    ps <- prune_samples(sample_sums(ps) > 0, ps)
+    ps <- prune_taxa(taxa_sums(ps) > 0, ps)
+    if (nsamples(ps) == 0 || ntaxa(ps) == 0) {
+        writeLines("skipped: no data after filtering", file.path(out_dir, "skipped.txt"))
+        writeLines(c(paste0('"${task.process}":'), '    skipped: no data after filtering'), "versions.yml")
+        quit(status=0)
+    }
+
     # Relative-abundance normalisation (no rarefaction)
     ps_norm  <- transform_sample_counts(ps, function(x) x / sum(x))
     otu_mat  <- as(otu_table(ps_norm), "matrix")
     if (!taxa_are_rows(ps_norm)) otu_mat <- t(otu_mat)
+    otu_mat[is.nan(otu_mat) | is.na(otu_mat)] <- 0
     otu_t    <- t(otu_mat)   # samples x ASVs
+
+    if (nrow(otu_t) < 3) {
+        message("Too few samples for beta diversity (", nrow(otu_t), "). Skipping.")
+        writeLines("skipped: too few samples for beta diversity", file.path(out_dir, "skipped.txt"))
+        writeLines(c(paste0('"${task.process}":'), '    skipped: too few samples'), "versions.yml")
+        quit(status=0)
+    }
 
     # CLR transformation (Aitchison distance)
     clr_transform <- function(mat) {
@@ -147,12 +164,14 @@ process ECOLOGY_BETA {
 
             # Single-factor PERMANOVA for primary group variable
             formula_str <- paste0("d_obj ~ meta_df[['", grp, "']]")
-            perm1 <- adonis2(as.formula(formula_str), permutations=999, parallel=${task.cpus})
-            perm_results[[paste0(d_nm, "_single")]] <- data.frame(
-                distance = d_nm,
-                formula  = paste0("~ ", grp),
-                data.frame(perm1)
-            )
+            tryCatch({
+                perm1 <- adonis2(as.formula(formula_str), permutations=999, parallel=${task.cpus})
+                perm_results[[paste0(d_nm, "_single")]] <- data.frame(
+                    distance = d_nm,
+                    formula  = paste0("~ ", grp),
+                    data.frame(perm1)
+                )
+            }, error=function(e) message("Single-factor PERMANOVA failed for ", d_nm, ": ", conditionMessage(e)))
 
             # Multi-factor PERMANOVA if multiple variables available
             if (length(all_vars) > 1) {
@@ -169,9 +188,11 @@ process ECOLOGY_BETA {
                 }, error=function(e) message("Multi-factor PERMANOVA failed: ", conditionMessage(e)))
             }
         }
-        perm_df <- do.call(rbind, perm_results)
-        write.table(perm_df, file.path(out_dir, "permanova_results.tsv"),
-                    sep="\\t", quote=FALSE)
+        if (length(perm_results) > 0) {
+            perm_df <- do.call(rbind, perm_results)
+            write.table(perm_df, file.path(out_dir, "permanova_results.tsv"),
+                        sep="\\t", quote=FALSE)
+        }
 
         # ── 3. Pairwise PERMANOVA ──────────────────────────────────────────
         groups    <- meta_df[[grp]]
@@ -179,68 +200,95 @@ process ECOLOGY_BETA {
         if (length(grp_levels) >= 2 && length(grp_levels) <= 10) {
             pairs <- combn(grp_levels, 2, simplify=FALSE)
             pw_results <- lapply(pairs, function(pair) {
-                idx <- which(groups %in% pair)
-                sub_dist <- as.dist(as.matrix(dist_methods\$bray_curtis)[idx, idx])
-                sub_meta <- meta_df[idx, , drop=FALSE]
-                formula_str <- paste0("sub_dist ~ sub_meta[['", grp, "']]")
-                pw_perm <- adonis2(as.formula(formula_str), permutations=999, parallel=${task.cpus})
-                data.frame(
-                    group1  = pair[1], group2 = pair[2],
-                    F_value = round(pw_perm[1, "F"], 4),
-                    R2      = round(pw_perm[1, "R2"], 4),
-                    p_value = pw_perm[1, "Pr(>F)"]
-                )
+                tryCatch({
+                    idx <- which(groups %in% pair)
+                    sub_dist <- as.dist(as.matrix(dist_methods\$bray_curtis)[idx, idx])
+                    sub_meta <- meta_df[idx, , drop=FALSE]
+                    # Need >=2 samples per group in this pair
+                    tbl <- table(sub_meta[[grp]])
+                    if (any(tbl < 2)) stop("fewer than 2 samples in a group")
+                    formula_str <- paste0("sub_dist ~ sub_meta[['", grp, "']]")
+                    pw_perm <- adonis2(as.formula(formula_str), permutations=999, parallel=${task.cpus})
+                    data.frame(
+                        group1  = pair[1], group2 = pair[2],
+                        F_value = round(pw_perm[1, "F"], 4),
+                        R2      = round(pw_perm[1, "R2"], 4),
+                        p_value = pw_perm[1, "Pr(>F)"]
+                    )
+                }, error=function(e) {
+                    message("Pairwise PERMANOVA failed for ", pair[1], " vs ", pair[2], ": ", conditionMessage(e))
+                    NULL
+                })
             })
-            pw_df <- do.call(rbind, pw_results)
-            pw_df\$p_adjusted <- p.adjust(pw_df\$p_value, method="BH")
-            write.table(pw_df, file.path(out_dir, "pairwise_permanova.tsv"),
-                        sep="\\t", quote=FALSE, row.names=FALSE)
+            pw_results <- Filter(Negate(is.null), pw_results)
+            if (length(pw_results) > 0) {
+                pw_df <- do.call(rbind, pw_results)
+                pw_df\$p_adjusted <- p.adjust(pw_df\$p_value, method="BH")
+                write.table(pw_df, file.path(out_dir, "pairwise_permanova.tsv"),
+                            sep="\\t", quote=FALSE, row.names=FALSE)
+            }
         }
 
         # ── 4. PERMDISP (multivariate homogeneity of dispersions) ─────────
         disp_results <- list()
         for (d_nm in c("bray_curtis","aitchison")) {
-            d_obj <- dist_methods[[d_nm]]
-            bd    <- betadisper(d_obj, groups, type="centroid")
-            bd_perm <- permutest(bd, permutations=999)
-            disp_results[[d_nm]] <- data.frame(
-                distance  = d_nm,
-                F_value   = round(bd_perm\$tab[1,"F"], 4),
-                p_value   = bd_perm\$tab[1,"Pr(>F)"],
-                signif    = ifelse(bd_perm\$tab[1,"Pr(>F)"] < 0.05, "*", "ns")
-            )
+            tryCatch({
+                d_obj <- dist_methods[[d_nm]]
+                bd    <- betadisper(d_obj, groups, type="centroid")
+                bd_perm <- permutest(bd, permutations=999)
+                disp_results[[d_nm]] <- data.frame(
+                    distance  = d_nm,
+                    F_value   = round(bd_perm\$tab[1,"F"], 4),
+                    p_value   = bd_perm\$tab[1,"Pr(>F)"],
+                    signif    = ifelse(bd_perm\$tab[1,"Pr(>F)"] < 0.05, "*", "ns")
+                )
+            }, error=function(e) message("PERMDISP failed for ", d_nm, ": ", conditionMessage(e)))
         }
-        disp_df <- do.call(rbind, disp_results)
-        write.table(disp_df, file.path(out_dir, "betadisper_permdisp.tsv"),
-                    sep="\\t", quote=FALSE, row.names=FALSE)
+        if (length(disp_results) > 0) {
+            disp_df <- do.call(rbind, disp_results)
+            write.table(disp_df, file.path(out_dir, "betadisper_permdisp.tsv"),
+                        sep="\\t", quote=FALSE, row.names=FALSE)
+        }
 
         # ── 5. ANOSIM ─────────────────────────────────────────────────────
-        anosim_res <- anosim(dist_methods\$bray_curtis, groups, permutations=999)
-        sink(file.path(out_dir, "anosim_results.txt"))
-        cat("ANOSIM (Bray-Curtis)\\n")
-        cat("R statistic:", round(anosim_res\$statistic, 4), "\\n")
-        cat("p-value:    ", anosim_res\$signif, "\\n\\n")
-        print(anosim_res)
-        sink()
+        anosim_res <- tryCatch(
+            anosim(dist_methods\$bray_curtis, groups, permutations=999),
+            error=function(e) { message("ANOSIM failed: ", conditionMessage(e)); NULL }
+        )
+        if (!is.null(anosim_res)) {
+            sink(file.path(out_dir, "anosim_results.txt"))
+            cat("ANOSIM (Bray-Curtis)\\n")
+            cat("R statistic:", round(anosim_res\$statistic, 4), "\\n")
+            cat("p-value:    ", anosim_res\$signif, "\\n\\n")
+            print(anosim_res)
+            sink()
+        }
 
         # ── 6. MRPP ───────────────────────────────────────────────────────
-        mrpp_res <- mrpp(otu_t, groups, permutations=999)
-        sink(file.path(out_dir, "mrpp_results.txt"))
-        cat("MRPP (Bray-Curtis community distances)\\n")
-        print(mrpp_res)
-        sink()
-
-        # Summary table
-        summary_stats <- data.frame(
-            test      = c("PERMANOVA (Bray-Curtis)", "ANOSIM (Bray-Curtis)", "MRPP"),
-            statistic = c(perm_results[[1]][1,"F"], anosim_res\$statistic, mrpp_res\$delta),
-            p_value   = c(perm_results[[1]][1,"Pr..F."], anosim_res\$signif, mrpp_res\$Pvalue)
+        mrpp_res <- tryCatch(
+            mrpp(otu_t, groups, permutations=999),
+            error=function(e) { message("MRPP failed: ", conditionMessage(e)); NULL }
         )
-        summary_stats\$signif <- ifelse(summary_stats\$p_value < 0.001, "***",
-                                 ifelse(summary_stats\$p_value < 0.01,  "**",
-                                 ifelse(summary_stats\$p_value < 0.05,  "*", "ns")))
-        write.table(summary_stats, file.path(out_dir, "multivariate_tests_summary.tsv"),
-                    sep="\\t", quote=FALSE, row.names=FALSE)
+        if (!is.null(mrpp_res)) {
+            sink(file.path(out_dir, "mrpp_results.txt"))
+            cat("MRPP (Bray-Curtis community distances)\\n")
+            print(mrpp_res)
+            sink()
+        }
+
+        # Summary table (only if we have results)
+        if (length(perm_results) > 0 && !is.null(anosim_res) && !is.null(mrpp_res)) {
+            summary_stats <- data.frame(
+                test      = c("PERMANOVA (Bray-Curtis)", "ANOSIM (Bray-Curtis)", "MRPP"),
+                statistic = c(perm_results[[1]][1,"F"], anosim_res\$statistic, mrpp_res\$delta),
+                p_value   = c(perm_results[[1]][1,"Pr..F."], anosim_res\$signif, mrpp_res\$Pvalue)
+            )
+            summary_stats\$signif <- ifelse(summary_stats\$p_value < 0.001, "***",
+                                     ifelse(summary_stats\$p_value < 0.01,  "**",
+                                     ifelse(summary_stats\$p_value < 0.05,  "*", "ns")))
+            write.table(summary_stats, file.path(out_dir, "multivariate_tests_summary.tsv"),
+                        sep="\\t", quote=FALSE, row.names=FALSE)
+        }
     }
 
     message("Beta diversity analysis complete: ", out_dir)

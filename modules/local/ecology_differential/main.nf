@@ -76,6 +76,7 @@ process ECOLOGY_DIFFERENTIAL {
 
     # ── Load data ────────────────────────────────────────────────────────
     asv_tab  <- read.table("${asv_table}", sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
+    asv_tab[is.na(asv_tab)] <- 0
     tax_tab  <- read.table("${taxonomy}",  sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
     meta     <- read.table(meta_file, sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
 
@@ -159,21 +160,35 @@ process ECOLOGY_DIFFERENTIAL {
 
     all_pairwise <- combn(grp_levels, 2, simplify=FALSE)
 
+    # Check each group has >=2 samples (required by DESeq2 and ALDEx2)
+    grp_counts <- table(meta[[grp]])
+    if (any(grp_counts < 2)) {
+        message("One or more groups have <2 samples. Skipping differential abundance.")
+        writeLines(c('"${task.process}":', '    skipped: groups need >=2 samples'), "versions.yml")
+        writeLines("skipped: groups need >=2 samples", file.path(out_dir, "skipped.txt"))
+        quit(status=0)
+    }
+
     # ── DESeq2 ──────────────────────────────────────────────────────────
     message("Running DESeq2...")
     asv_int <- round(asv_tab)
     storage.mode(asv_int) <- "integer"
 
-    dds <- DESeqDataSetFromMatrix(
-        countData = asv_int,
-        colData   = meta[colnames(asv_int), , drop=FALSE],
-        design    = as.formula(paste0("~ ", grp))
-    )
-    dds <- estimateSizeFactors(dds)
-    dds <- DESeq(dds, quiet=TRUE, fitType="local")
+    dds <- tryCatch({
+        dds_tmp <- DESeqDataSetFromMatrix(
+            countData = asv_int,
+            colData   = meta[colnames(asv_int), , drop=FALSE],
+            design    = as.formula(paste0("~ ", grp))
+        )
+        dds_tmp <- estimateSizeFactors(dds_tmp)
+        DESeq(dds_tmp, quiet=TRUE, fitType="local")
+    }, error=function(e) {
+        message("DESeq2 setup failed: ", conditionMessage(e))
+        NULL
+    })
 
     deseq_all <- list()
-    for (pair in all_pairwise) {
+    if (!is.null(dds)) for (pair in all_pairwise) {
         contrast <- c(grp, pair[2], pair[1])
         tryCatch({
             res <- results(dds, contrast=contrast, alpha=0.05)
@@ -270,7 +285,7 @@ process ECOLOGY_DIFFERENTIAL {
     }
 
     # ── Heatmap of top differentially abundant taxa ───────────────────────
-    if (length(deseq_all) > 0) {
+    if (!is.null(dds) && length(deseq_all) > 0) {
         top_asvs <- unique(unlist(lapply(deseq_all, function(d) {
             sig <- d[!is.na(d\$padj) & d\$padj < 0.05 & abs(d\$log2FC) > 1, ]
             head(sig\$asv_id[order(sig\$padj)], 20)

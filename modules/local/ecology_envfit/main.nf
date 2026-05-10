@@ -69,10 +69,18 @@ process ECOLOGY_ENVFIT {
 
     # ── Load data ────────────────────────────────────────────────────────
     asv_tab  <- read.table("${asv_table}", sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
+    asv_tab[is.na(asv_tab)] <- 0
     meta     <- read.table(meta_file, sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
     common_s <- intersect(colnames(asv_tab), rownames(meta))
     asv_tab  <- asv_tab[, common_s, drop=FALSE]
     meta     <- meta[common_s, , drop=FALSE]
+
+    # Remove zero-sum samples and zero-sum ASVs
+    keep_samp <- colSums(asv_tab) > 0
+    asv_tab   <- asv_tab[, keep_samp, drop=FALSE]
+    meta      <- meta[colnames(asv_tab), , drop=FALSE]
+    keep_asv  <- rowSums(asv_tab) > 0
+    asv_tab   <- asv_tab[keep_asv, , drop=FALSE]
 
     if (nrow(asv_tab) == 0 || ncol(asv_tab) == 0) {
         message("Empty ASV table for ", marker, " — skipping envfit analysis.")
@@ -113,15 +121,30 @@ process ECOLOGY_ENVFIT {
     env_sub <- env_clean[common_r, , drop=FALSE]
 
     # ── 1. envfit: vector fitting onto NMDS ordination ────────────────────
-    nmds_fit <- metaMDS(otu_sub, distance="bray", k=2, trymax=200, trace=FALSE, parallel=${task.cpus})
-    ef       <- envfit(nmds_fit, env_sub, permutations=999, na.rm=TRUE)
+    nmds_fit <- tryCatch(
+        metaMDS(otu_sub, distance="bray", k=2, trymax=200, trace=FALSE, parallel=${task.cpus}),
+        error=function(e) { message("metaMDS failed: ", conditionMessage(e)); NULL }
+    )
 
+    if (is.null(nmds_fit)) {
+        writeLines("skipped: metaMDS failed", file.path(out_dir, "skipped.txt"))
+        writeLines(c(paste0('"${task.process}":'), '    skipped: metaMDS failed'), "versions.yml")
+        quit(status=0)
+    }
+
+    ef <- tryCatch(
+        envfit(nmds_fit, env_sub, permutations=999, na.rm=TRUE),
+        error=function(e) { message("envfit failed: ", conditionMessage(e)); NULL }
+    )
+
+    if (!is.null(ef)) {
     sink(file.path(out_dir, "envfit_summary.txt"))
     print(ef)
     sink()
+    }
 
     # Format envfit results
-    if (!is.null(ef\$vectors)) {
+    if (!is.null(ef) && !is.null(ef\$vectors)) {
         vec_df <- data.frame(ef\$vectors\$arrows)
         vec_df\$r2      <- ef\$vectors\$r
         vec_df\$p_value <- ef\$vectors\$pvals
@@ -142,7 +165,7 @@ process ECOLOGY_ENVFIT {
     if (!is.null(grp)) nmds_df[[grp]] <- meta[common_r, grp]
 
     # Significant env vectors
-    sig_vecs <- if (!is.null(ef\$vectors)) {
+    sig_vecs <- if (!is.null(ef) && !is.null(ef\$vectors)) {
         vd <- data.frame(ef\$vectors\$arrows * sqrt(ef\$vectors\$r))
         colnames(vd) <- c("NMDS1","NMDS2")
         vd\$label    <- rownames(vd)

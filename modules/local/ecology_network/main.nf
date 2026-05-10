@@ -57,6 +57,7 @@ process ECOLOGY_NETWORK {
 
     # ── Load and filter data ─────────────────────────────────────────────
     asv_tab <- read.table("${asv_table}", sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
+    asv_tab[is.na(asv_tab)] <- 0
     tax_tab <- read.table("${taxonomy}",  sep="\\t", header=TRUE, row.names=1, check.names=FALSE)
     common  <- intersect(rownames(asv_tab), rownames(tax_tab))
     asv_tab <- asv_tab[common, , drop=FALSE]
@@ -81,8 +82,11 @@ process ECOLOGY_NETWORK {
     # ── Correlation matrix (Spearman on CLR) ─────────────────────────────
     message("Computing Spearman correlations on ", nrow(asv_tab), " ASVs...")
     cor_mat  <- cor(otu_clr, method="spearman")
+    cor_mat[is.na(cor_mat) | is.nan(cor_mat)] <- 0
     n_obs    <- nrow(otu_clr)
-    t_stat   <- cor_mat * sqrt((n_obs - 2) / (1 - cor_mat^2))
+    # Clamp cor to avoid division by zero when |cor|==1
+    cor_clamped <- pmin(pmax(cor_mat, -0.9999999), 0.9999999)
+    t_stat   <- cor_clamped * sqrt((n_obs - 2) / (1 - cor_clamped^2))
     p_mat    <- 2 * pt(-abs(t_stat), df=n_obs - 2)
     p_adj    <- matrix(p.adjust(as.vector(p_mat), method="BH"),
                        nrow=nrow(p_mat), dimnames=dimnames(p_mat))

@@ -65,6 +65,7 @@ process ECOLOGY_ORDINATION {
     # Load data
     asv_tab <- read.table("${asv_table}", sep="\\t", header=TRUE,
                           row.names=1, check.names=FALSE)
+    asv_tab[is.na(asv_tab)] <- 0
     tax_tab <- read.table("${taxonomy}", sep="\\t", header=TRUE,
                           row.names=1, check.names=FALSE)
 
@@ -93,8 +94,24 @@ process ECOLOGY_ORDINATION {
         color_var <- NULL
     }
 
+    ps <- prune_samples(sample_sums(ps) > 0, ps)
+    ps <- prune_taxa(taxa_sums(ps) > 0, ps)
+    if (nsamples(ps) == 0 || ntaxa(ps) == 0) {
+        writeLines("skipped: no data after filtering", file.path(out_dir, "skipped.txt"))
+        writeLines(c(paste0('"${task.process}":'), '    skipped: no data after filtering'), "versions.yml")
+        quit(status=0)
+    }
+    if (nsamples(ps) < 3) {
+        writeLines("skipped: too few samples for ordination", file.path(out_dir, "skipped.txt"))
+        writeLines(c(paste0('"${task.process}":'), '    skipped: too few samples'), "versions.yml")
+        quit(status=0)
+    }
+
     # Relative-abundance normalisation (no rarefaction)
     ps_norm <- transform_sample_counts(ps, function(x) x / sum(x))
+    otu_norm_mat <- as(otu_table(ps_norm), "matrix")
+    otu_norm_mat[is.nan(otu_norm_mat) | is.na(otu_norm_mat)] <- 0
+    otu_table(ps_norm) <- otu_table(otu_norm_mat, taxa_are_rows=taxa_are_rows(ps_norm))
 
     # ── PCoA (Bray-Curtis) ───────────────────────────────────────────────
     ord_bray <- ordinate(ps_norm, method="PCoA", distance="bray")
@@ -118,6 +135,7 @@ process ECOLOGY_ORDINATION {
     )
 
     # ── NMDS (Bray-Curtis) ───────────────────────────────────────────────
+    tryCatch({
     ord_nmds <- ordinate(ps_norm, method="NMDS", distance="bray",
                          trymax=100, k=2)
 
@@ -130,6 +148,7 @@ process ECOLOGY_ORDINATION {
         labs(title = paste(marker, "- NMDS (Bray-Curtis)"))
     ggsave(file.path(out_dir, "nmds_bray_curtis.pdf"), p_nmds, width=8, height=6)
     ggsave(file.path(out_dir, "nmds_bray_curtis.png"), p_nmds, width=8, height=6, dpi=150)
+    }, error=function(e) message("NMDS failed: ", conditionMessage(e)))
 
     # ── RDA/CCA (if metadata continuous variables present) ───────────────
     if (!is.null(meta_file) && file.exists(meta_file)) {
