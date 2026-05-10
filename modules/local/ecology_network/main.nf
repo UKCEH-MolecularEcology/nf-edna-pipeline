@@ -27,14 +27,13 @@ process ECOLOGY_NETWORK {
 
     options(repos = c(CRAN = "https://cloud.r-project.org"))
 
-    pkgs <- c("igraph","ggraph","ggplot2","dplyr","Hmisc","psych","vegan")
+    pkgs <- c("igraph","ggplot2","dplyr","vegan")
     for (pkg in pkgs) {
         if (!requireNamespace(pkg, quietly=TRUE))
             install.packages(pkg)
     }
     suppressPackageStartupMessages({
-        library(igraph); library(ggraph); library(ggplot2)
-        library(dplyr);  library(Hmisc);  library(vegan)
+        library(igraph); library(ggplot2); library(dplyr)
     })
 
     marker     <- "${marker}"
@@ -187,26 +186,30 @@ process ECOLOGY_NETWORK {
     write.table(hub_taxa, file.path(out_dir, "hub_keystone_taxa.tsv"),
                 sep="\\t", quote=FALSE, row.names=FALSE)
 
-    # ── Network visualization ─────────────────────────────────────────────
-    # Limit to largest connected component for clarity
+    # ── Network visualization (base igraph) ──────────────────────────────
     main_comp <- induced_subgraph(g, V(g)[components(g)\$membership == which.max(components(g)\$csize)])
 
     tryCatch({
-        p_net <- ggraph(main_comp, layout="fr") +
-            geom_edge_link(aes(color=type, width=abs(weight)), alpha=0.4) +
-            scale_edge_color_manual(values=c("positive"="#2980B9","negative"="#C0392B")) +
-            scale_edge_width(range=c(0.3, 2)) +
-            geom_node_point(aes(size=degree, fill=phylum),
-                            shape=21, alpha=0.85) +
-            scale_size(range=c(2, 10)) +
-            geom_node_text(aes(label=ifelse(degree >= hub_threshold, name, "")),
-                           size=2, repel=TRUE) +
-            theme_graph(base_size=11) +
-            labs(title=paste(marker, "- Co-occurrence Network"),
-                 subtitle=paste("Nodes:", vcount(main_comp), "| Edges:", ecount(main_comp),
-                               "| Spearman |r| >=", cor_cut))
-        ggsave(file.path(out_dir, "network_plot.pdf"), p_net, width=12, height=10)
-        ggsave(file.path(out_dir, "network_plot.png"), p_net, width=12, height=10, dpi=150)
+        lay    <- layout_with_fr(main_comp)
+        e_col  <- ifelse(E(main_comp)\$type == "positive", "#2980B9", "#C0392B")
+        e_wid  <- 0.5 + 2 * (abs(E(main_comp)\$weight) - cor_cut) / (1 - cor_cut + 1e-9)
+        v_size <- 4 + 8 * (V(main_comp)\$degree / max(V(main_comp)\$degree + 1))
+        v_lab  <- ifelse(V(main_comp)\$degree >= hub_threshold,
+                         V(main_comp)\$name, NA)
+
+        pdf(file.path(out_dir, "network_plot.pdf"), width=12, height=10)
+        plot(main_comp,
+             layout          = lay,
+             vertex.size     = v_size,
+             vertex.label    = v_lab,
+             vertex.label.cex = 0.6,
+             vertex.color    = "#AED6F1",
+             edge.color      = e_col,
+             edge.width      = e_wid,
+             main = paste(marker, "- Co-occurrence Network"),
+             sub  = paste("Nodes:", vcount(main_comp), "| Edges:", ecount(main_comp),
+                          "| Spearman |r| >=", cor_cut))
+        dev.off()
     }, error=function(e) message("Network plot failed: ", conditionMessage(e)))
 
     # Positive vs negative edge pie chart
@@ -223,8 +226,7 @@ process ECOLOGY_NETWORK {
 
     writeLines(c(
         paste0('"${task.process}":'),
-        paste0('    igraph: ',  packageVersion('igraph')),
-        paste0('    ggraph: ',  packageVersion('ggraph')),
+        paste0('    igraph: ', packageVersion('igraph')),
         paste0('    R: ', R.version\$major, '.', R.version\$minor)
     ), "versions.yml")
     """
