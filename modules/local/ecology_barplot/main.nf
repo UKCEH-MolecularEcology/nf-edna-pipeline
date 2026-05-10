@@ -97,7 +97,9 @@ process ECOLOGY_BARPLOT {
     tax_ranks <- intersect(available_ranks, colnames(tax_table(ps)))
 
     for (rank in tax_ranks) {
+        tryCatch({
         ps_rank <- tax_glom(ps_rel, taxrank = rank, NArm = FALSE)
+        if (ntaxa(ps_rank) == 0) stop("no taxa")
 
         # Keep top N taxa, lump rest as "Other"
         top_n   <- 20
@@ -134,10 +136,12 @@ process ECOLOGY_BARPLOT {
         write.table(comp_wide,
                     file.path(out_dir, paste0(rank, "_relative_abundance.tsv")),
                     sep="\\t", quote=FALSE, row.names=FALSE)
+        }, error=function(e) message("Rank ", rank, " skipped: ", conditionMessage(e)))
     }
 
     # Heatmap of top ASVs
-    top_asvs <- names(sort(taxa_sums(ps_rel), decreasing=TRUE))[1:min(50, ntaxa(ps_rel))]
+    if (ntaxa(ps_rel) > 0) {
+    top_asvs <- names(sort(taxa_sums(ps_rel), decreasing=TRUE))[seq_len(min(50, ntaxa(ps_rel)))]
     ps_heat  <- prune_taxa(top_asvs, ps_rel)
 
     heat_mat <- as.matrix(t(otu_table(ps_heat)))
@@ -154,6 +158,7 @@ process ECOLOGY_BARPLOT {
             cexCol=0.6, cexRow=0.8)
     dev.off()
 
+    } # end ntaxa > 0
     message("Composition analysis complete.")
 
     writeLines(
