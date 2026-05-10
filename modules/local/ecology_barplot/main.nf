@@ -25,6 +25,7 @@ process ECOLOGY_BARPLOT {
     .libPaths(c(r_lib, .libPaths()))
     options(mc.cores = ${task.cpus})
     if (length(readLines("${asv_table}")) <= 1L) {
+        dir.create("${marker}.composition_results", showWarnings=FALSE, recursive=TRUE)
         writeLines(c('"${task.process}":', '    skipped: empty ASV table'), "versions.yml")
         quit(status=0)
     }
