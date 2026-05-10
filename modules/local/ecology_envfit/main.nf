@@ -345,7 +345,7 @@ process ECOLOGY_ENVFIT {
                             idvar="diversity_metric", timevar="env_variable", direction="wide")
         rownames(cor_wide) <- cor_wide\$diversity_metric
         cor_wide\$diversity_metric <- NULL
-        colnames(cor_wide) <- gsub("rho\\.", "", colnames(cor_wide))
+        colnames(cor_wide) <- gsub("rho[.]", "", colnames(cor_wide))
 
         if (ncol(cor_wide) >= 2 && nrow(cor_wide) >= 1) {
             pdf(file.path(out_dir, "alpha_env_correlation_heatmap.pdf"), width=max(6, ncol(cor_wide)+2), height=4)

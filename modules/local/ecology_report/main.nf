@@ -115,7 +115,7 @@ if (!is.null(asv_tab)) {
 # Alpha Diversity
 
 ```{r alpha, fig.cap="Alpha diversity metrics across samples"}
-alpha_file <- list.files("${alpha_dir}", pattern="alpha_diversity_metrics\\.tsv", full.names=TRUE)
+alpha_file <- list.files("${alpha_dir}", pattern="alpha_diversity_metrics[.]tsv", full.names=TRUE)
 if (length(alpha_file) > 0) {
   alpha_df <- read.table(alpha_file[1], sep="\\t", header=TRUE)
   kable(head(alpha_df, 20)) %>%
@@ -124,14 +124,14 @@ if (length(alpha_file) > 0) {
 ```
 
 ```{r alpha-plots, out.width="90%"}
-plot_files <- list.files("${alpha_dir}", pattern="\\.png", full.names=TRUE)
+plot_files <- list.files("${alpha_dir}", pattern="[.]png", full.names=TRUE)
 for (f in plot_files) knitr::include_graphics(f)
 ```
 
 # Beta Diversity
 
 ```{r beta-tests}
-beta_file <- list.files("${beta_dir}", pattern="multivariate_tests_summary\\.tsv", full.names=TRUE)
+beta_file <- list.files("${beta_dir}", pattern="multivariate_tests_summary[.]tsv", full.names=TRUE)
 if (length(beta_file) > 0) {
   kable(read.table(beta_file[1], sep="\\t", header=TRUE),
         caption="Multivariate community-level tests") %>%
@@ -140,7 +140,7 @@ if (length(beta_file) > 0) {
 ```
 
 ```{r permanova}
-perm_file <- list.files("${beta_dir}", pattern="permanova_results\\.tsv", full.names=TRUE)
+perm_file <- list.files("${beta_dir}", pattern="permanova_results[.]tsv", full.names=TRUE)
 if (length(perm_file) > 0) {
   kable(read.table(perm_file[1], sep="\\t", header=TRUE, fill=TRUE),
         caption="PERMANOVA results") %>%
@@ -151,14 +151,14 @@ if (length(perm_file) > 0) {
 # Ordination
 
 ```{r ordination-plots, out.width="90%", fig.cap="Ordination analyses"}
-ord_files <- list.files("${ordination_dir}", pattern="\\.png", full.names=TRUE)
+ord_files <- list.files("${ordination_dir}", pattern="[.]png", full.names=TRUE)
 for (f in ord_files) knitr::include_graphics(f)
 ```
 
 # Co-occurrence Network
 
 ```{r network-stats}
-net_file <- list.files("${network_dir}", pattern="network_statistics\\.tsv", full.names=TRUE)
+net_file <- list.files("${network_dir}", pattern="network_statistics[.]tsv", full.names=TRUE)
 if (length(net_file) > 0) {
   kable(read.table(net_file[1], sep="\\t", header=TRUE),
         caption="Network statistics") %>%
@@ -167,12 +167,12 @@ if (length(net_file) > 0) {
 ```
 
 ```{r network-plot, out.width="90%"}
-net_img <- list.files("${network_dir}", pattern="network_plot\\.png", full.names=TRUE)
+net_img <- list.files("${network_dir}", pattern="network_plot[.]png", full.names=TRUE)
 if (length(net_img) > 0) knitr::include_graphics(net_img[1])
 ```
 
 ```{r hub-taxa}
-hub_file <- list.files("${network_dir}", pattern="hub_keystone_taxa\\.tsv", full.names=TRUE)
+hub_file <- list.files("${network_dir}", pattern="hub_keystone_taxa[.]tsv", full.names=TRUE)
 if (length(hub_file) > 0) {
   kable(read.table(hub_file[1], sep="\\t", header=TRUE),
         caption="Hub / keystone taxa (top 5% by degree)") %>%
@@ -183,7 +183,7 @@ if (length(hub_file) > 0) {
 # Indicator Species
 
 ```{r indval}
-iv_file <- list.files("${indicator_dir}", pattern="indval_significant\\.tsv", full.names=TRUE)
+iv_file <- list.files("${indicator_dir}", pattern="indval_significant[.]tsv", full.names=TRUE)
 if (length(iv_file) > 0) {
   df <- read.table(iv_file[1], sep="\\t", header=TRUE)
   kable(head(df, 30), caption="IndVal significant indicator species (p < 0.05)") %>%
@@ -192,7 +192,7 @@ if (length(iv_file) > 0) {
 ```
 
 ```{r core}
-core_file <- list.files("${indicator_dir}", pattern="core_microbiome_matrix\\.tsv", full.names=TRUE)
+core_file <- list.files("${indicator_dir}", pattern="core_microbiome_matrix[.]tsv", full.names=TRUE)
 if (length(core_file) > 0) {
   core_df <- read.table(core_file[1], sep="\\t", header=TRUE)
   core50  <- core_df[core_df\$prevalence >= 50, , drop=FALSE]
@@ -205,7 +205,7 @@ if (length(core_file) > 0) {
 # Environmental Drivers
 
 ```{r envfit-table}
-ev_file <- list.files("${envfit_dir}", pattern="envfit_vectors\\.tsv", full.names=TRUE)
+ev_file <- list.files("${envfit_dir}", pattern="envfit_vectors[.]tsv", full.names=TRUE)
 if (length(ev_file) > 0) {
   kable(read.table(ev_file[1], sep="\\t", header=TRUE),
         caption="envfit: environmental vector fitting (p < 0.05 = significant)") %>%
@@ -214,7 +214,7 @@ if (length(ev_file) > 0) {
 ```
 
 ```{r mantel-table}
-mantel_file <- list.files("${envfit_dir}", pattern="mantel_tests\\.tsv", full.names=TRUE)
+mantel_file <- list.files("${envfit_dir}", pattern="mantel_tests[.]tsv", full.names=TRUE)
 if (length(mantel_file) > 0) {
   kable(read.table(mantel_file[1], sep="\\t", header=TRUE),
         caption="Mantel tests: community distance vs environmental distance") %>%
@@ -223,7 +223,7 @@ if (length(mantel_file) > 0) {
 ```
 
 ```{r envfit-plots, out.width="90%"}
-ev_imgs <- list.files("${envfit_dir}", pattern="\\.png", full.names=TRUE)
+ev_imgs <- list.files("${envfit_dir}", pattern="[.]png", full.names=TRUE)
 for (f in ev_imgs) knitr::include_graphics(f)
 ```
 

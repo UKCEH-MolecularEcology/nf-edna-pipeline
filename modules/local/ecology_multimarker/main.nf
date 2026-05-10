@@ -55,8 +55,8 @@ process ECOLOGY_MULTIMARKER {
     set.seed(42)
 
     # ── Load all marker ASV tables ────────────────────────────────────────
-    asv_files <- list.files(".", pattern="merged_asv_table\\.tsv\$", full.names=TRUE)
-    tax_files <- list.files(".", pattern="\\.taxonomy\\.tsv\$",      full.names=TRUE)
+    asv_files <- list.files(".", pattern="merged_asv_table[.]tsv\$", full.names=TRUE)
+    tax_files <- list.files(".", pattern="[.]taxonomy[.]tsv\$",      full.names=TRUE)
 
     # Match files to marker names (files are staged with original names)
     data_list <- list()
