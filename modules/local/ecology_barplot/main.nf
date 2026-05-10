@@ -26,6 +26,7 @@ process ECOLOGY_BARPLOT {
     options(mc.cores = ${task.cpus})
     if (length(readLines("${asv_table}")) <= 1L) {
         dir.create("${marker}.composition_results", showWarnings=FALSE, recursive=TRUE)
+        writeLines("skipped: empty ASV table", "${marker}.composition_results/skipped.txt")
         writeLines(c('"${task.process}":', '    skipped: empty ASV table'), "versions.yml")
         quit(status=0)
     }

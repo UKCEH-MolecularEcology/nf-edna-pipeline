@@ -28,6 +28,7 @@ process ECOLOGY_BETA {
     options(mc.cores = ${task.cpus})
     if (length(readLines("${asv_table}")) <= 1L) {
         dir.create("${marker}.beta_results", showWarnings=FALSE, recursive=TRUE)
+        writeLines("skipped: empty ASV table", "${marker}.beta_results/skipped.txt")
         writeLines(c('"${task.process}":', '    skipped: empty ASV table'), "versions.yml")
         quit(status=0)
     }
