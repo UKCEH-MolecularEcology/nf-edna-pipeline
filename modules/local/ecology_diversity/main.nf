@@ -11,7 +11,7 @@ process ECOLOGY_DIVERSITY {
     path metadata
 
     output:
-    tuple val(marker), path('*.diversity_results/'), emit: results
+    tuple val(marker), path("${marker}.diversity_results/"), emit: results
     path 'versions.yml',                              emit: versions
 
     script:

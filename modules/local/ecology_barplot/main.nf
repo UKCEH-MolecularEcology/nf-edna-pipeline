@@ -11,7 +11,7 @@ process ECOLOGY_BARPLOT {
     path metadata
 
     output:
-    tuple val(marker), path('*.composition_results/'), emit: results
+    tuple val(marker), path("${marker}.composition_results/"), emit: results
     path 'versions.yml',                                emit: versions
 
     script:

@@ -11,7 +11,7 @@ process ECOLOGY_ORDINATION {
     path metadata
 
     output:
-    tuple val(marker), path('*.ordination_results/'), emit: results
+    tuple val(marker), path("${marker}.ordination_results/"), emit: results
     path 'versions.yml',                               emit: versions
 
     script:
