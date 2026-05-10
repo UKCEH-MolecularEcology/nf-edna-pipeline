@@ -56,6 +56,13 @@ process DADA2_DENOISE {
         fwd_filter <- gsub("trimmed", "filtered", fwd_files)
         rev_filter <- gsub("trimmed", "filtered", rev_files)
 
+        # Per-read minLen: use truncation length when truncating (reads will be
+        # exactly truncLen after filtering), otherwise fall back to min_length.
+        min_per_read <- min(
+            ifelse(trunc_len_f > 0, trunc_len_f, min_length),
+            ifelse(trunc_len_r > 0, trunc_len_r, min_length)
+        )
+
         # Re-filter for this sample
         out_filter <- filterAndTrim(
             fwd_files, fwd_filter,
@@ -66,7 +73,7 @@ process DADA2_DENOISE {
             ),
             maxEE       = c(max_ee_f, max_ee_r),
             truncQ      = 2,
-            minLen      = min_length,
+            minLen      = min_per_read,
             rm.phix     = TRUE,
             compress    = TRUE,
             multithread = ${task.cpus}
@@ -122,12 +129,14 @@ process DADA2_DENOISE {
 
     } else {
         fwd_filter <- gsub("trimmed", "filtered", all_files)
+        min_per_read <- ifelse(trunc_len_f > 0, trunc_len_f, min_length)
+
         out_filter <- filterAndTrim(
             all_files, fwd_filter,
             maxEE       = max_ee_f,
             truncLen    = ifelse(trunc_len_f > 0, trunc_len_f, 0),
             truncQ      = 2,
-            minLen      = min_length,
+            minLen      = min_per_read,
             rm.phix     = TRUE,
             compress    = TRUE,
             multithread = ${task.cpus}
