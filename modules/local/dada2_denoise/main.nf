@@ -75,37 +75,50 @@ process DADA2_DENOISE {
         fwd_ok <- fwd_filter[file.exists(fwd_filter) & file.info(fwd_filter)\$size > 0]
         rev_ok <- rev_filter[file.exists(rev_filter) & file.info(rev_filter)\$size > 0]
 
-        # Dereplicate
-        derepF <- derepFastq(fwd_ok)
-        derepR <- derepFastq(rev_ok)
-        if (!is.list(derepF)) derepF <- list(derepF)
-        if (!is.list(derepR)) derepR <- list(derepR)
+        if (length(fwd_ok) == 0 || length(rev_ok) == 0) {
+            message("No reads passed filtering for ", sample_id, " — writing empty outputs.")
+            seqtab <- matrix(integer(0), nrow=1, ncol=0, dimnames=list(sample_id, character(0)))
+            read_stats <- data.frame(
+                sample=sample_id, input=sum(out_filter[,1]), filtered=0L,
+                denoised_fwd=0L, denoised_rev=0L, merged=0L, length_filt=0L,
+                stringsAsFactors=FALSE
+            )
+        } else {
+            # Dereplicate
+            derepF <- derepFastq(fwd_ok)
+            derepR <- derepFastq(rev_ok)
+            if (!is.list(derepF)) derepF <- list(derepF)
+            if (!is.list(derepR)) derepR <- list(derepR)
 
-        # Sample inference
-        dadaF <- dada(derepF, err = err_fwd, pool = pool, multithread = ${task.cpus})
-        dadaR <- dada(derepR, err = err_rev, pool = pool, multithread = ${task.cpus})
+            # Sample inference
+            dadaF <- dada(derepF, err = err_fwd, pool = pool, multithread = ${task.cpus})
+            dadaR <- dada(derepR, err = err_rev, pool = pool, multithread = ${task.cpus})
+            if (inherits(dadaF, "dada")) dadaF <- list(dadaF)
+            if (inherits(dadaR, "dada")) dadaR <- list(dadaR)
 
-        # Merge paired reads
-        mergers <- mergePairs(dadaF, derepF, dadaR, derepR, verbose = TRUE)
+            # Merge paired reads
+            mergers <- mergePairs(dadaF, derepF, dadaR, derepR, verbose = TRUE)
+            if (is.data.frame(mergers)) mergers <- list(mergers)
 
-        # Make sequence table
-        seqtab <- makeSequenceTable(mergers)
+            # Make sequence table
+            seqtab <- makeSequenceTable(mergers)
 
-        # Filter by amplicon length
-        seq_lengths <- nchar(getSequences(seqtab))
-        seqtab <- seqtab[, seq_lengths >= min_length & seq_lengths <= max_length]
+            # Filter by amplicon length
+            seq_lengths <- nchar(getSequences(seqtab))
+            seqtab <- seqtab[, seq_lengths >= min_length & seq_lengths <= max_length, drop=FALSE]
 
-        # Read tracking stats
-        read_stats <- data.frame(
-            sample       = sample_id,
-            input        = out_filter[,1],
-            filtered     = out_filter[,2],
-            denoised_fwd = sapply(dadaF, function(x) sum(x\$denoised)),
-            denoised_rev = sapply(dadaR, function(x) sum(x\$denoised)),
-            merged       = sapply(mergers, function(x) sum(x\$accept)),
-            length_filt  = rowSums(seqtab),
-            stringsAsFactors = FALSE
-        )
+            # Read tracking stats
+            read_stats <- data.frame(
+                sample       = sample_id,
+                input        = sum(out_filter[,1]),
+                filtered     = sum(out_filter[,2]),
+                denoised_fwd = sapply(dadaF, function(x) sum(x\$denoised)),
+                denoised_rev = sapply(dadaR, function(x) sum(x\$denoised)),
+                merged       = sapply(mergers, function(x) sum(x\$accept)),
+                length_filt  = rowSums(seqtab),
+                stringsAsFactors = FALSE
+            )
+        }
 
     } else {
         fwd_filter <- gsub("trimmed", "filtered", all_files)
@@ -121,22 +134,33 @@ process DADA2_DENOISE {
         )
 
         fwd_ok <- fwd_filter[file.exists(fwd_filter) & file.info(fwd_filter)\$size > 0]
-        derepF <- derepFastq(fwd_ok)
-        if (!is.list(derepF)) derepF <- list(derepF)
 
-        dadaF  <- dada(derepF, err = err_fwd, pool = pool, multithread = ${task.cpus})
-        seqtab <- makeSequenceTable(dadaF)
+        if (length(fwd_ok) == 0) {
+            message("No reads passed filtering for ", sample_id, " — writing empty outputs.")
+            seqtab <- matrix(integer(0), nrow=1, ncol=0, dimnames=list(sample_id, character(0)))
+            read_stats <- data.frame(
+                sample=sample_id, input=sum(out_filter[,1]), filtered=0L,
+                denoised=0L, length_filt=0L
+            )
+        } else {
+            derepF <- derepFastq(fwd_ok)
+            if (!is.list(derepF)) derepF <- list(derepF)
 
-        seq_lengths <- nchar(getSequences(seqtab))
-        seqtab <- seqtab[, seq_lengths >= min_length & seq_lengths <= max_length]
+            dadaF  <- dada(derepF, err = err_fwd, pool = pool, multithread = ${task.cpus})
+            if (inherits(dadaF, "dada")) dadaF <- list(dadaF)
+            seqtab <- makeSequenceTable(dadaF)
 
-        read_stats <- data.frame(
-            sample      = sample_id,
-            input       = out_filter[,1],
-            filtered    = out_filter[,2],
-            denoised    = sapply(dadaF, function(x) sum(x\$denoised)),
-            length_filt = rowSums(seqtab)
-        )
+            seq_lengths <- nchar(getSequences(seqtab))
+            seqtab <- seqtab[, seq_lengths >= min_length & seq_lengths <= max_length, drop=FALSE]
+
+            read_stats <- data.frame(
+                sample      = sample_id,
+                input       = sum(out_filter[,1]),
+                filtered    = sum(out_filter[,2]),
+                denoised    = sapply(dadaF, function(x) sum(x\$denoised)),
+                length_filt = rowSums(seqtab)
+            )
+        }
     }
 
     # Export
