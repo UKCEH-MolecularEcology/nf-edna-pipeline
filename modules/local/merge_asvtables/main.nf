@@ -21,11 +21,13 @@ process MERGE_ASV_TABLES {
     library(dada2)
 
     marker  <- "${marker}"
-    rds_files <- list.files(".", pattern = "\\.asv_table\\.rds\$", full.names = TRUE)
+    rds_files <- list.files(".", pattern = "\\\\.asv_table\\\\.rds\$", full.names = TRUE)
 
-    # Merge sequence tables across samples
+    # Merge sequence tables across samples (skip empty tables from zero-read samples)
     seqtabs <- lapply(rds_files, readRDS)
-    merged  <- mergeSequenceTables(seqtabs)
+    seqtabs <- Filter(function(x) ncol(x) > 0, seqtabs)
+    merged  <- if (length(seqtabs) > 0) mergeSequenceTables(seqtabs) else
+                   matrix(integer(0), nrow=0, ncol=0)
 
     # Remove bimeras (chimeras) from the merged table
     # (De novo chimera check on merged table as final step)
