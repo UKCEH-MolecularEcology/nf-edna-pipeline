@@ -24,6 +24,16 @@ process FASTQC {
         ${args} \\
         ${reads}
 
+    # FastQC names its outputs after the input file basename, which doesn't
+    # include marker -- when the same sample (same DNA extract) is run
+    # through multiple markers, MultiQC's collected file list ends up with
+    # identically-named zips from different markers and errors out with an
+    # "input file name collision". Prefix with the marker to disambiguate.
+    for f in *_fastqc.html *_fastqc.zip; do
+        [ -e "\$f" ] || continue
+        mv "\$f" "${meta.marker}_\$f"
+    done
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         fastqc: \$(fastqc --version | sed 's/FastQC v//')
@@ -33,8 +43,8 @@ process FASTQC {
     stub:
     def prefix = "${meta.id}_${meta.marker}"
     """
-    touch ${prefix}_fastqc.html
-    touch ${prefix}_fastqc.zip
+    touch ${meta.marker}_${prefix}_fastqc.html
+    touch ${meta.marker}_${prefix}_fastqc.zip
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
