@@ -7,7 +7,12 @@ LABEL org.opencontainers.image.version="12.0-beta1"
 ENV USEARCH_RELEASE_TAG=v12.0-beta1
 ENV USEARCH_ASSET_NAME=usearch_linux_x86_12.0-beta
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+# python3: sintax_parse.py (a bin/ script) runs inside this same container
+#   right after usearch12 -sintax, and ubuntu:22.04 ships no Python by default.
+# procps: provides `ps`, which Nextflow requires inside every container to
+#   poll task resource usage (also missing from the bare base image).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl python3 procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Pinned release binary -- never `latest` -- matching bin/install_usearch.sh
