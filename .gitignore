@@ -11,6 +11,10 @@ full_ecology_results/
 databases
 databases/
 
+# Locally-repaired copies of corrupted source fastq.gz files (real
+# sequencing data, referenced by path from samplesheets/*.csv)
+samplesheets/fixed_fastq/
+
 # Singularity image cache
 singularity/
 *.sif
