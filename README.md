@@ -52,8 +52,10 @@ Raw reads (FASTQ)
 │   ├── 18S   →  PR2 v5.0              (DADA2 naive Bayesian)
 │   ├── ITS   →  UNITE v10             (DADA2 naive Bayesian)
 │   ├── CO1   →  MIDORI2 (GB262)       (DADA2 naive Bayesian)
-│   ├── 12S   →  MIDORI2 (GB262)       (DADA2 naive Bayesian)
+│   ├── 12S   →  SINTAX, 3 databases   (only when --sintax.enabled — see below)
 │   └── rbcL  →  rbcLClassifier v1     (RDP Classifier, NCBI-trained)
+│
+├── 12S "Tapirs" branch  — optional, parallel to the above (see below)
 │
 ├── Basic ecology        — diversity, PCoA, NMDS, barplots
 │
@@ -68,6 +70,76 @@ Raw reads (FASTQ)
     ├── Cross-marker         inter-marker Procrustes, genus sharing, combined PCoA
     └── HTML report          per-marker integrated R Markdown report
 ```
+
+---
+
+## 12S: Tapirs + SINTAX (optional, in addition to the generic path)
+
+12S gets two extra, independent processing branches on top of the generic
+DADA2 path above, ported from the `12S-edna-dada2-tapirs-workflow` Snakemake
+pipeline. Both are opt-in (`enabled = false` by default) and additive — with
+both disabled, 12S behaves like any other marker.
+
+**"Tapirs" branch** (`--tapirs.enabled true`) — a self-contained,
+BLAST/Kraken2-based taxonomic assignment pipeline that runs on raw reads in
+parallel with everything else:
+
+```
+Raw reads
+│
+├── fastp        — quality trim + pair merge (own front-trim substitutes
+│                  for primer removal; runs independently of Cutadapt)
+├── seqkit       — FASTQ → FASTA
+├── VSEARCH      — dereplicate → denoise (UNOISE3) or cluster → chimera removal
+│
+├── BLAST  → taxdump lineage lookup → majority-vote LCA (MLCA)
+├── Kraken2 → taxdump lineage lookup
+│
+└── OTU tables (per marker, across all samples)
+    ├── {experiment}_blast{identity}_{cluster_method}.tsv (+ _full_lineage variant)
+    └── {experiment}_kraken2_conf{confidence}_{cluster_method}.tsv (+ _full_lineage variant)
+```
+
+**SINTAX branch** (`--sintax.enabled true`) — runs on the marker-level
+merged, chimera-free 12S ASV set (i.e. after the generic path's
+`MERGE_ASV_TABLES` step), assigning taxonomy via `usearch12 -sintax` against
+three reference databases, then applying LOD-based blank cleanup:
+
+```
+Merged 12S ASVs (post MERGE_ASV_TABLES)
+│
+├── SINTAX × 3 databases (INBO, MIDORI, CLARE) — usearch12 -sintax
+├── Merge/compare across databases → asv_taxonomy_compare.tsv
+├── CLARE-specific abundance table → collapsed to lowest resolved taxon
+│
+└── Blank cleanup (LOD = mean + 3×SD, LOQ = mean + 10×SD of blank reads)
+    ├── Sample classification by name regex: pcr_blank / extraction_blank / site_blank / sample
+    ├── ncl_cleaned_labLOD.csv / siteLOD.csv / bothLOD.csv / _long.csv
+    └── QC diagnostics: blank-to-sample ratios, per-database summary stats
+```
+
+`SINTAX_12S`'s blank-cleaned taxonomy (not the generic per-sample DADA2
+naive-Bayes output) is what feeds 12S's ecology input when `--sintax.enabled
+true`.
+
+Both branches need real reference data staged locally — set these under
+`params.tapirs` / `params.sintax` in `nextflow.config` (or on the CLI):
+
+| Param | Purpose |
+|-------|---------|
+| `--tapirs.blast.db` | BLAST db prefix (e.g. `/path/to/12s_fish_blast_db/12s_fish`) |
+| `--tapirs.kraken2.db` | Kraken2 db directory |
+| `--tapirs.taxdump` | NCBI taxdump directory (`nodes.dmp`/`names.dmp`/`merged.dmp`) |
+| `--tapirs.experiment` | Output filename prefix |
+| `--sintax.db_paths.INBO` / `.MIDORI` / `.CLARE` | SINTAX-formatted reference FASTAs |
+
+Full parameter list (fastp/vsearch/blast/mlca/kraken2 tuning, blank-cleanup
+regexes, LOD/LOQ multipliers) is in `nextflow.config` under `params.tapirs`
+and `params.sintax` — each key is commented with its purpose and default.
+
+The 12S primer set also changed from MiFish-U to Riaz V5
+(`ACTGGGATTAGATACCCC` / `TAGAACAGGCTCCTCTAG`), with `--primers.12S.fusion_tag
+true` available if a fusion tag was used in library prep.
 
 ---
 
@@ -134,10 +206,15 @@ bash assets/download_databases.sh databases/
 This downloads:
 - **SILVA 138.1** (16S) from Zenodo
 - **PR2 v5.0** (18S) from GitHub
-- **MIDORI2 GB262** (CO1, 12S) from the MIDORI website
+- **MIDORI2 GB262** (CO1) from the MIDORI website
 - **rbcLClassifier v1** (rbcL) from GitHub — RDP Classifier trained on NCBI plant rbcL sequences (Kress & Porter 2020); citable archive at [doi:10.5281/zenodo.4741459](https://doi.org/10.5281/zenodo.4741459)
 
 > **UNITE (ITS)** requires manual download due to licensing. Go to [unite.ut.ee/repository.php](https://unite.ut.ee/repository.php), download the *General FASTA release — developer s_all version*, and place it in `databases/`. Update the path in `nextflow.config` accordingly.
+
+> **12S** does not use this auto-download mechanism — its taxonomy comes from
+> the dedicated Tapirs/SINTAX branches (BLAST/Kraken2/taxdump + SINTAX
+> against 3 databases), each with its own required paths under
+> `params.tapirs` / `params.sintax`. See [12S: Tapirs + SINTAX](#12s-tapirs--sintax-optional-in-addition-to-the-generic-path) below.
 
 After downloading, verify the paths in `nextflow.config` under `params.databases` match your local files:
 
@@ -147,7 +224,6 @@ databases {
     '18S'  { path = "${projectDir}/databases/pr2_version_5.0.0_SSU_dada2.fasta.gz" }
     'ITS'  { path = "${projectDir}/databases/sh_general_release_dynamic_s_all_19.02.2024.fasta.gz" }
     'CO1'  { path = "${projectDir}/databases/MIDORI2_LONGEST_NUC_GB262_CO1_DADA2.fasta.gz" }
-    '12S'  { path = "${projectDir}/databases/MIDORI2_LONGEST_NUC_GB262_12S_DADA2.fasta.gz" }
     'RBCL' { path = "${projectDir}/databases/rbcLv1_trained/mydata_trained" }
 }
 ```
@@ -467,6 +543,20 @@ results/
 │   └── {MARKER}.read_tracking.tsv     Reads surviving each step
 ├── taxonomy/{MARKER}/
 │   └── {SAMPLE}_{MARKER}.taxonomy.tsv Taxonomy assignments with bootstrap scores
+│                                      (12S: NO_FILE placeholder — see sintax/12S/ instead)
+├── tapirs/                            12S Tapirs branch (--tapirs.enabled true)
+│   ├── {experiment}_blast{id}_{method}.tsv           OTU table (BLAST route)
+│   ├── {experiment}_blast{id}_{method}_full_lineage.tsv
+│   ├── {experiment}_kraken2_conf{c}_{method}.tsv     OTU table (Kraken2 route)
+│   ├── {experiment}_kraken2_conf{c}_{method}_full_lineage.tsv
+│   └── 09_rereplicated/{SAMPLE}/       Rereplicated per-sample FASTA
+├── sintax/12S/                        12S SINTAX branch (--sintax.enabled true)
+│   ├── 12S.asv_taxonomy_compare.tsv    3-database taxonomy comparison
+│   ├── 12S.sintax_database_summary.tsv Per-database assignment-rate summary
+│   └── blank_cleanup/
+│       ├── ncl_cleaned_bothLOD.csv     ← Main dataset (also feeds ecology/12S/)
+│       ├── ncl_cleaned_labLOD.csv / siteLOD.csv / _long.csv
+│       └── cleanup_*.csv               QC diagnostics (blank stats, ratios)
 ├── ecology/{MARKER}/                  Basic ecology (diversity, ordination, barplots)
 └── full_ecology/
     ├── {MARKER}/
@@ -495,7 +585,7 @@ Default primers used by the pipeline. To use different primers, override `params
 | 18S | TAReuk454FWD1: `CCAGCASCYGCGGTAATTCC` | TAReukREV3: `ACTTTCGTTCTTGATYRA` | V4 | ~380 bp |
 | ITS | ITS1F: `CTTGGTCATTTAGAGGAAGTAA` | ITS2: `GCTGCGTTCTTCATCGATGC` | ITS1 | 200–500 bp |
 | CO1 | mlCOIintF (Leray): `GGWACWGGWTGAACWGTWTAYCCYCC` | jgHCO2198: `TAIACYTCIGGRTGICCRAARAAYCA` | mtCO1 | ~313 bp |
-| 12S | MiFish-U-F: `GTCGGTAAAACTCGTGCCAGC` | MiFish-U-R: `CATAGTGGGGTATCTAATCCCAGTTTG` | 12S rRNA | 163–185 bp |
+| 12S | Riaz V5: `ACTGGGATTAGATACCCC` | Riaz V5: `TAGAACAGGCTCCTCTAG` | 12S rRNA V5 | ~100–130 bp |
 | rbcL | rbcLa-F (Kress & Erickson 2007): `ATGTCACCACAAACAGAGACTAAAGC` | rbcLa-R: `GTAAAATCAAGTCCACCRCG` | rbcLa | ~550 bp |
 
 ---
@@ -516,6 +606,12 @@ Default primers used by the pipeline. To use different primers, override `params
 
 **Taxonomy database not found**
 : Check the path in `nextflow.config` matches the exact filename/directory downloaded. Paths support `${projectDir}` as a shorthand for the pipeline directory. For rbcL, the path should point to the `mydata_trained/` directory extracted from `rbcLv1_trained.tar.gz`.
+
+**`params.tapirs.enabled is true but required path(s) are not set`**
+: Set the missing `--tapirs.blast.db` / `--tapirs.kraken2.db` / `--tapirs.taxdump` / `--tapirs.experiment` (whichever the error names) — these aren't auto-downloaded like the other markers' databases, since they're large and institution-specific.
+
+**12S ecology output looks empty/placeholder**
+: Ecology needs `--sintax.enabled true` for 12S — with it left at the default `false`, 12S's per-sample taxonomy is a NO_FILE placeholder (12S's real taxonomy comes from the SINTAX branch, not the generic per-sample step) and downstream ecology has nothing to work with.
 
 **OutOfMemoryError in DADA2 or taxonomy**
 : Increase `--max_memory` (e.g. `--max_memory 256.GB`) or set `process.memory` directly in a custom config.

@@ -18,6 +18,8 @@ include { AMPLICON_PROCESSING as AMPLICON_PROCESSING_ITS  } from './subworkflows
 include { AMPLICON_PROCESSING as AMPLICON_PROCESSING_CO1  } from './subworkflows/local/amplicon_processing'
 include { AMPLICON_PROCESSING as AMPLICON_PROCESSING_12S  } from './subworkflows/local/amplicon_processing'
 include { AMPLICON_PROCESSING as AMPLICON_PROCESSING_RBCL } from './subworkflows/local/amplicon_processing'
+include { TAPIRS_12S                            } from './subworkflows/local/amplicon_processing_12s_tapirs'
+include { SINTAX_12S                            } from './subworkflows/local/amplicon_processing_12s_sintax'
 include { ECOLOGICAL_ANALYSIS                  } from './subworkflows/local/ecological_analysis'
 include { FULL_ECOLOGICAL_ANALYSIS             } from './subworkflows/local/full_ecological_analysis'
 include { MERGE_ASV_TABLES                     } from './modules/local/merge_asvtables/main'
@@ -255,6 +257,12 @@ workflow {
         ch_asv_seqs      = ch_asv_seqs.mix(AMPLICON_PROCESSING_12S.out.asv_seqs)
         ch_taxonomy_tbls = ch_taxonomy_tbls.mix(AMPLICON_PROCESSING_12S.out.taxonomy)
         ch_cutadapt_logs = ch_cutadapt_logs.mix(AMPLICON_PROCESSING_12S.out.cutadapt_log)
+
+        // Standalone Tapirs branch (fastp/vsearch/BLAST/Kraken2/MLCA) — fed
+        // raw reads directly, self-contained, does not feed ecology.
+        if (params.tapirs.enabled) {
+            TAPIRS_12S(ch_by_marker.s12)
+        }
     }
     if (markers_list.contains('RBCL')) {
         AMPLICON_PROCESSING_RBCL(ch_by_marker.rbcl, 'RBCL', loadMarkerParams('RBCL'))
@@ -271,6 +279,19 @@ workflow {
 
     MERGE_ASV_TABLES(ch_asv_grouped)
 
+    // 12S SINTAX taxonomy (3 databases) + LOD blank cleanup — runs on the
+    // marker-level merged, chimera-free 12S ASV set (sequence-keyed), not
+    // per-sample. Feeds the ecology-input wiring below in place of the
+    // generic per-sample TAXONOMY output (which is a placeholder for 12S).
+    if (markers_list.contains('12S') && params.sintax.enabled) {
+        ch_merged_12s = MERGE_ASV_TABLES.out.merged_table
+            .join(MERGE_ASV_TABLES.out.merged_fasta, by: 0)
+            .join(MERGE_ASV_TABLES.out.asv_lookup, by: 0)
+            .filter { marker, table, fasta, lookup -> marker == '12S' }
+
+        SINTAX_12S(ch_merged_12s)
+    }
+
     // ── MultiQC report ────────────────────────────────────────────────────
     ch_multiqc_files = AMPLICON_QC.out.fastqc_zip.map { meta, zip -> zip }
         .mix(ch_cutadapt_logs.map { meta, log -> log })
@@ -278,10 +299,19 @@ workflow {
     MULTIQC(ch_multiqc_files)
 
     // ── Ecological analysis ───────────────────────────────────────────────
+    // 12S is excluded from the arbitrary "first sample's taxonomy" pick
+    // below (its generic per-sample taxonomy is a NO_FILE placeholder — see
+    // the tax_method == 'skip' guard in amplicon_processing.nf) and gets
+    // SINTAX_12S's blank-cleaned taxonomy substituted in instead.
     ch_taxonomy_by_marker = ch_taxonomy_tbls
+        .filter { meta, tbl -> meta.marker != '12S' }
         .map { meta, tbl -> [ meta.marker, tbl ] }
         .groupTuple()
         .map { marker, tbls -> [ marker, tbls[0] ] }
+
+    if (markers_list.contains('12S') && params.sintax.enabled) {
+        ch_taxonomy_by_marker = ch_taxonomy_by_marker.mix(SINTAX_12S.out.blank_cleaned_wide)
+    }
 
     ch_ecology_input = MERGE_ASV_TABLES.out.merged_table
         .join(ch_taxonomy_by_marker, by: 0)
@@ -315,8 +345,16 @@ def loadMarkerParams(marker) {
     if (!primers) error "No primer configuration found for marker: ${marker}"
     if (!db)      error "No database configuration found for marker: ${marker}"
 
+    // 12S fusion-tag support: when a fusion tag was used in library prep,
+    // the forward primer's first base appears as a degenerate R (A|G) in
+    // the reads rather than the plain A.
+    def fwd = primers.fwd
+    if (marker == '12S' && primers.fusion_tag) {
+        fwd = 'R' + fwd.substring(1)
+    }
+
     return [
-        fwd_primer:    primers.fwd,
+        fwd_primer:    fwd,
         rev_primer:    primers.rev,
         min_length:    primers.min_length ?: 50,
         max_length:    primers.max_length ?: 600,

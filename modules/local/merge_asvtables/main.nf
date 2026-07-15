@@ -13,6 +13,8 @@ process MERGE_ASV_TABLES {
     tuple val(marker), path('*.merged_asv_table.tsv'),  emit: merged_table
     tuple val(marker), path('*.merged_asv_table.rds'),  emit: merged_rds
     tuple val(marker), path('*.read_tracking.tsv'),     emit: read_tracking
+    tuple val(marker), path('*.merged_asv.fasta'),      emit: merged_fasta
+    tuple val(marker), path('*.asv_lookup.tsv'),        emit: asv_lookup
     path 'versions.yml',                                 emit: versions
 
     script:
@@ -35,6 +37,10 @@ process MERGE_ASV_TABLES {
                     sep="\\t", quote=FALSE, row.names=FALSE)
         write.table(data.frame(sample=character(0), merged_in=integer(0), nonchimera=integer(0)),
                     paste0(marker, ".read_tracking.tsv"),
+                    sep="\\t", quote=FALSE, row.names=FALSE)
+        file.create(paste0(marker, ".merged_asv.fasta"))
+        write.table(data.frame(ASV=character(0), sequence=character(0), length=integer(0)),
+                    paste0(marker, ".asv_lookup.tsv"),
                     sep="\\t", quote=FALSE, row.names=FALSE)
     } else {
         merged <- if (length(seqtabs) == 1) seqtabs[[1]] else mergeSequenceTables(tables = seqtabs)
@@ -60,6 +66,24 @@ process MERGE_ASV_TABLES {
                     sep = "\\t", quote = FALSE, row.names = FALSE)
 
         saveRDS(merged_nochim, paste0(marker, ".merged_asv_table.rds"))
+
+        # ASV FASTA + ID<->sequence lookup, keyed by sequential ASV IDs in
+        # column order — needed by marker-specific downstream taxonomy
+        # branches (e.g. 12S SINTAX) that require a query FASTA rather than
+        # a sequence-keyed table.
+        asv_seqs <- colnames(merged_nochim)
+        asv_ids  <- paste0("ASV", seq_along(asv_seqs))
+
+        fasta_lines <- character(2 * length(asv_seqs))
+        fasta_lines[c(TRUE, FALSE)] <- paste0(">", asv_ids)
+        fasta_lines[c(FALSE, TRUE)] <- asv_seqs
+        writeLines(fasta_lines, paste0(marker, ".merged_asv.fasta"))
+
+        write.table(
+            data.frame(ASV = asv_ids, sequence = asv_seqs, length = nchar(asv_seqs)),
+            paste0(marker, ".asv_lookup.tsv"),
+            sep = "\\t", quote = FALSE, row.names = FALSE
+        )
     }
 
     writeLines(
@@ -77,6 +101,8 @@ process MERGE_ASV_TABLES {
     touch ${marker}.merged_asv_table.tsv
     touch ${marker}.merged_asv_table.rds
     touch ${marker}.read_tracking.tsv
+    touch ${marker}.merged_asv.fasta
+    touch ${marker}.asv_lookup.tsv
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
