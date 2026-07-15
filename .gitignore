@@ -8,6 +8,7 @@ work/
 results/
 test_results/
 full_ecology_results/
+databases
 databases/
 
 # Singularity image cache

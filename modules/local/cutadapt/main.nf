@@ -21,48 +21,77 @@ process CUTADAPT {
     def min_len    = meta.min_length ?: 50
     def max_len    = meta.max_length ? "--maximum-length ${meta.max_length}" : ''
     def extra_args = params.cutadapt_args ?: '--discard-untrimmed'
+    def skip       = params.primers_already_removed
 
     if (meta.single_end) {
-        """
-        cutadapt \\
-            -g ${fwd} \\
-            --minimum-length ${min_len} \\
-            ${max_len} \\
-            --cores ${task.cpus} \\
-            ${extra_args} \\
-            -o ${prefix}.trimmed.fastq.gz \\
-            ${reads[0]} \\
-            > ${prefix}.log 2>&1
+        if (skip) {
+            // Input already had primers stripped upstream -- copy through
+            // unchanged instead of searching for (and discarding reads
+            // missing) a primer sequence that's no longer there.
+            """
+            cp ${reads[0]} ${prefix}.trimmed.fastq.gz
+            echo "primers_already_removed=true: copied through unchanged" > ${prefix}.log
 
-        cat <<-END_VERSIONS > versions.yml
-        "${task.process}":
-            cutadapt: \$(cutadapt --version)
-        END_VERSIONS
-        """
+            cat <<-END_VERSIONS > versions.yml
+            "${task.process}":
+                cutadapt: \$(cutadapt --version)
+            END_VERSIONS
+            """
+        } else {
+            """
+            cutadapt \\
+                -g ${fwd} \\
+                --minimum-length ${min_len} \\
+                ${max_len} \\
+                --cores ${task.cpus} \\
+                ${extra_args} \\
+                -o ${prefix}.trimmed.fastq.gz \\
+                ${reads[0]} \\
+                > ${prefix}.log 2>&1
+
+            cat <<-END_VERSIONS > versions.yml
+            "${task.process}":
+                cutadapt: \$(cutadapt --version)
+            END_VERSIONS
+            """
+        }
     } else {
-        // Linked adapter strategy: trim fwd from R1, rev-complement of rev from R2
-        def rev_rc = reverseComplement(rev)
-        """
-        cutadapt \\
-            -g ${fwd} \\
-            -G ${rev} \\
-            -a ${rev_rc} \\
-            -A ${reverseComplement(fwd)} \\
-            --minimum-length ${min_len} \\
-            ${max_len} \\
-            --cores ${task.cpus} \\
-            ${extra_args} \\
-            --pair-filter=any \\
-            -o ${prefix}_R1.trimmed.fastq.gz \\
-            -p ${prefix}_R2.trimmed.fastq.gz \\
-            ${reads[0]} ${reads[1]} \\
-            > ${prefix}.log 2>&1
+        if (skip) {
+            """
+            cp ${reads[0]} ${prefix}_R1.trimmed.fastq.gz
+            cp ${reads[1]} ${prefix}_R2.trimmed.fastq.gz
+            echo "primers_already_removed=true: copied through unchanged" > ${prefix}.log
 
-        cat <<-END_VERSIONS > versions.yml
-        "${task.process}":
-            cutadapt: \$(cutadapt --version)
-        END_VERSIONS
-        """
+            cat <<-END_VERSIONS > versions.yml
+            "${task.process}":
+                cutadapt: \$(cutadapt --version)
+            END_VERSIONS
+            """
+        } else {
+            // Linked adapter strategy: trim fwd from R1, rev-complement of rev from R2
+            def rev_rc = reverseComplement(rev)
+            """
+            cutadapt \\
+                -g ${fwd} \\
+                -G ${rev} \\
+                -a ${rev_rc} \\
+                -A ${reverseComplement(fwd)} \\
+                --minimum-length ${min_len} \\
+                ${max_len} \\
+                --cores ${task.cpus} \\
+                ${extra_args} \\
+                --pair-filter=any \\
+                -o ${prefix}_R1.trimmed.fastq.gz \\
+                -p ${prefix}_R2.trimmed.fastq.gz \\
+                ${reads[0]} ${reads[1]} \\
+                > ${prefix}.log 2>&1
+
+            cat <<-END_VERSIONS > versions.yml
+            "${task.process}":
+                cutadapt: \$(cutadapt --version)
+            END_VERSIONS
+            """
+        }
     }
 
     stub:
