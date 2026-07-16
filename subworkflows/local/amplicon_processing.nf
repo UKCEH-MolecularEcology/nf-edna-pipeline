@@ -2,7 +2,6 @@ include { CUTADAPT           } from '../../modules/local/cutadapt/main'
 include { DADA2_LEARN_ERRORS } from '../../modules/local/dada2_learn_errors/main'
 include { DADA2_DENOISE      } from '../../modules/local/dada2_denoise/main'
 include { VSEARCH_CHIMERA    } from '../../modules/local/vsearch_chimera/main'
-include { TAXONOMY           } from '../../modules/local/taxonomy/main'
 
 workflow AMPLICON_PROCESSING {
 
@@ -78,28 +77,14 @@ workflow AMPLICON_PROCESSING {
     )
     ch_versions = ch_versions.mix(VSEARCH_CHIMERA.out.versions.first())
 
-    // 5. Filter ASV table to chimera-free ASVs and assign taxonomy.
-    // 'skip' (used by 12S, whose real taxonomy comes from the dedicated
-    // SINTAX_12S subworkflow after MERGE_ASV_TABLES) short-circuits this so
-    // per-sample taxonomy isn't computed and thrown away.
-    if (marker_params.tax_method == 'skip') {
-        ch_tax = VSEARCH_CHIMERA.out.nonchimeras.map { meta, fa -> [ meta, file("${projectDir}/assets/NO_FILE") ] }
-    } else {
-        TAXONOMY(
-            VSEARCH_CHIMERA.out.nonchimeras,
-            marker_params.tax_db,
-            marker_params.tax_db_type,
-            marker_params.tax_method,
-            marker
-        )
-        ch_versions = ch_versions.mix(TAXONOMY.out.versions.first())
-        ch_tax = TAXONOMY.out.taxonomy
-    }
+    // Taxonomy is no longer assigned here (per-sample, on private pre-merge
+    // ASVs) — it now runs once, collectively, on the marker-level merged
+    // ASV set after MERGE_ASV_TABLES. See subworkflows/local/collective_taxonomy.nf
+    // (and amplicon_processing_12s_sintax.nf for 12S specifically).
 
     emit:
     asv_table    = DADA2_DENOISE.out.asv_table      // [ meta, asv_table.rds ]
     asv_seqs     = VSEARCH_CHIMERA.out.nonchimeras  // [ meta, asv_seqs.fasta ]
-    taxonomy     = ch_tax                           // [ meta, taxonomy.tsv ]
     cutadapt_log = CUTADAPT.out.log
     versions     = ch_versions
 }

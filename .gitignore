@@ -19,6 +19,9 @@ samplesheets/fixed_fastq/
 singularity/
 *.sif
 
+# Shared R package library for ecology modules (runtime-installed, per params.r_lib_cache)
+r_libs/
+
 # Conda envs
 conda/
 *.conda

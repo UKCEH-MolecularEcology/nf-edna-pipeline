@@ -1,5 +1,5 @@
 process TAXONOMY {
-    tag "${meta.id}_${marker}"
+    tag "${marker}"
     label 'process_high'
 
     container {
@@ -13,18 +13,17 @@ process TAXONOMY {
     publishDir "${params.outdir}/taxonomy/${marker}", mode: 'copy'
 
     input:
-    tuple val(meta), path(fasta)
+    tuple val(marker), path(fasta)   // marker-level, collective FASTA (post MERGE_ASV_TABLES) — see collective_taxonomy.nf
     path  tax_db
     val   db_type    // silva | unite | midori | pr2 | rdp
     val   tax_method // dada2 | blast | rdp
-    val   marker
 
     output:
-    tuple val(meta), path('*.taxonomy.tsv'),  emit: taxonomy
+    tuple val(marker), path('*.taxonomy.tsv'), emit: taxonomy
     path 'versions.yml',                       emit: versions
 
     script:
-    def prefix = "${meta.id}_${marker}"
+    def prefix = "${marker}"
 
     if (tax_method == 'rdp') {
         def rdp_xmx  = params.rdp_mem       ?: '8g'
@@ -101,6 +100,7 @@ process TAXONOMY {
         """
         #!/usr/bin/env Rscript
         library(dada2)
+        library(Biostrings)
 
         marker     <- "${marker}"
         db_type    <- "${db_type}"
@@ -109,7 +109,16 @@ process TAXONOMY {
         prefix     <- "${prefix}"
         add_species <- as.logical("${add_species}")
 
-        seqs <- getSequences(fasta_file)
+        # readDNAStringSet (unlike getSequences) preserves the FASTA headers
+        # (ASV1, ASV2, ...) as names -- assignTaxonomy() below only accepts a
+        # plain sequence vector and re-keys its own output by sequence,
+        # discarding those names, so build a sequence->label map up front and
+        # remap the result's rownames back afterward. This keeps asv_id as
+        # the stable ASV label (matching the rdp/blast branches) instead of
+        # the raw sequence, which downstream joins (asv_taxonomy_table) rely on.
+        fasta_seqs   <- readDNAStringSet(fasta_file)
+        seqs         <- as.character(fasta_seqs)
+        seq_to_label <- setNames(names(seqs), unname(seqs))
 
         if (length(seqs) == 0) {
             message("Empty FASTA — writing empty taxonomy table.")
@@ -125,7 +134,7 @@ process TAXONOMY {
 
         # Assign taxonomy
         taxa <- assignTaxonomy(
-            seqs,
+            unname(seqs),
             tax_db,
             multithread  = ${task.cpus},
             minBoot      = 50,
@@ -135,6 +144,8 @@ process TAXONOMY {
 
         tax_table   <- taxa\$tax
         boot_table  <- taxa\$boot
+        rownames(tax_table)  <- unname(seq_to_label[rownames(tax_table)])
+        rownames(boot_table) <- unname(seq_to_label[rownames(boot_table)])
 
         # Format ranks based on database type
         if (db_type %in% c("silva", "midori")) {
@@ -178,7 +189,7 @@ process TAXONOMY {
     }
 
     stub:
-    def prefix = "${meta.id}_${meta.marker}"
+    def prefix = "${marker}"
     """
     touch ${prefix}.taxonomy.tsv
 

@@ -20,6 +20,11 @@ include { AMPLICON_PROCESSING as AMPLICON_PROCESSING_12S  } from './subworkflows
 include { AMPLICON_PROCESSING as AMPLICON_PROCESSING_RBCL } from './subworkflows/local/amplicon_processing'
 include { TAPIRS_12S                            } from './subworkflows/local/amplicon_processing_12s_tapirs'
 include { SINTAX_12S                            } from './subworkflows/local/amplicon_processing_12s_sintax'
+include { COLLECTIVE_TAXONOMY as COLLECTIVE_TAXONOMY_16S  } from './subworkflows/local/collective_taxonomy'
+include { COLLECTIVE_TAXONOMY as COLLECTIVE_TAXONOMY_18S  } from './subworkflows/local/collective_taxonomy'
+include { COLLECTIVE_TAXONOMY as COLLECTIVE_TAXONOMY_ITS  } from './subworkflows/local/collective_taxonomy'
+include { COLLECTIVE_TAXONOMY as COLLECTIVE_TAXONOMY_CO1  } from './subworkflows/local/collective_taxonomy'
+include { COLLECTIVE_TAXONOMY as COLLECTIVE_TAXONOMY_RBCL } from './subworkflows/local/collective_taxonomy'
 include { ECOLOGICAL_ANALYSIS                  } from './subworkflows/local/ecological_analysis'
 include { FULL_ECOLOGICAL_ANALYSIS             } from './subworkflows/local/full_ecological_analysis'
 include { MERGE_ASV_TABLES                     } from './modules/local/merge_asvtables/main'
@@ -219,7 +224,6 @@ workflow {
 
     ch_asv_tables    = Channel.empty()
     ch_asv_seqs      = Channel.empty()
-    ch_taxonomy_tbls = Channel.empty()
     ch_cutadapt_logs = Channel.empty()
 
     // DSL2 requires each subworkflow to be called at most once; use aliased imports
@@ -227,35 +231,30 @@ workflow {
         AMPLICON_PROCESSING_16S(ch_by_marker.s16, '16S', loadMarkerParams('16S'))
         ch_asv_tables    = ch_asv_tables.mix(AMPLICON_PROCESSING_16S.out.asv_table)
         ch_asv_seqs      = ch_asv_seqs.mix(AMPLICON_PROCESSING_16S.out.asv_seqs)
-        ch_taxonomy_tbls = ch_taxonomy_tbls.mix(AMPLICON_PROCESSING_16S.out.taxonomy)
         ch_cutadapt_logs = ch_cutadapt_logs.mix(AMPLICON_PROCESSING_16S.out.cutadapt_log)
     }
     if (markers_list.contains('18S')) {
         AMPLICON_PROCESSING_18S(ch_by_marker.s18, '18S', loadMarkerParams('18S'))
         ch_asv_tables    = ch_asv_tables.mix(AMPLICON_PROCESSING_18S.out.asv_table)
         ch_asv_seqs      = ch_asv_seqs.mix(AMPLICON_PROCESSING_18S.out.asv_seqs)
-        ch_taxonomy_tbls = ch_taxonomy_tbls.mix(AMPLICON_PROCESSING_18S.out.taxonomy)
         ch_cutadapt_logs = ch_cutadapt_logs.mix(AMPLICON_PROCESSING_18S.out.cutadapt_log)
     }
     if (markers_list.contains('ITS')) {
         AMPLICON_PROCESSING_ITS(ch_by_marker.its, 'ITS', loadMarkerParams('ITS'))
         ch_asv_tables    = ch_asv_tables.mix(AMPLICON_PROCESSING_ITS.out.asv_table)
         ch_asv_seqs      = ch_asv_seqs.mix(AMPLICON_PROCESSING_ITS.out.asv_seqs)
-        ch_taxonomy_tbls = ch_taxonomy_tbls.mix(AMPLICON_PROCESSING_ITS.out.taxonomy)
         ch_cutadapt_logs = ch_cutadapt_logs.mix(AMPLICON_PROCESSING_ITS.out.cutadapt_log)
     }
     if (markers_list.contains('CO1')) {
         AMPLICON_PROCESSING_CO1(ch_by_marker.co1, 'CO1', loadMarkerParams('CO1'))
         ch_asv_tables    = ch_asv_tables.mix(AMPLICON_PROCESSING_CO1.out.asv_table)
         ch_asv_seqs      = ch_asv_seqs.mix(AMPLICON_PROCESSING_CO1.out.asv_seqs)
-        ch_taxonomy_tbls = ch_taxonomy_tbls.mix(AMPLICON_PROCESSING_CO1.out.taxonomy)
         ch_cutadapt_logs = ch_cutadapt_logs.mix(AMPLICON_PROCESSING_CO1.out.cutadapt_log)
     }
     if (markers_list.contains('12S')) {
         AMPLICON_PROCESSING_12S(ch_by_marker.s12, '12S', loadMarkerParams('12S'))
         ch_asv_tables    = ch_asv_tables.mix(AMPLICON_PROCESSING_12S.out.asv_table)
         ch_asv_seqs      = ch_asv_seqs.mix(AMPLICON_PROCESSING_12S.out.asv_seqs)
-        ch_taxonomy_tbls = ch_taxonomy_tbls.mix(AMPLICON_PROCESSING_12S.out.taxonomy)
         ch_cutadapt_logs = ch_cutadapt_logs.mix(AMPLICON_PROCESSING_12S.out.cutadapt_log)
 
         // Standalone Tapirs branch (fastp/vsearch/BLAST/Kraken2/MLCA) — fed
@@ -268,7 +267,6 @@ workflow {
         AMPLICON_PROCESSING_RBCL(ch_by_marker.rbcl, 'RBCL', loadMarkerParams('RBCL'))
         ch_asv_tables    = ch_asv_tables.mix(AMPLICON_PROCESSING_RBCL.out.asv_table)
         ch_asv_seqs      = ch_asv_seqs.mix(AMPLICON_PROCESSING_RBCL.out.asv_seqs)
-        ch_taxonomy_tbls = ch_taxonomy_tbls.mix(AMPLICON_PROCESSING_RBCL.out.taxonomy)
         ch_cutadapt_logs = ch_cutadapt_logs.mix(AMPLICON_PROCESSING_RBCL.out.cutadapt_log)
     }
 
@@ -279,17 +277,38 @@ workflow {
 
     MERGE_ASV_TABLES(ch_asv_grouped)
 
-    // 12S SINTAX taxonomy (3 databases) + LOD blank cleanup — runs on the
-    // marker-level merged, chimera-free 12S ASV set (sequence-keyed), not
-    // per-sample. Feeds the ecology-input wiring below in place of the
-    // generic per-sample TAXONOMY output (which is a placeholder for 12S).
-    if (markers_list.contains('12S') && params.sintax.enabled) {
-        ch_merged_12s = MERGE_ASV_TABLES.out.merged_table
-            .join(MERGE_ASV_TABLES.out.merged_fasta, by: 0)
-            .join(MERGE_ASV_TABLES.out.asv_lookup, by: 0)
-            .filter { marker, table, fasta, lookup -> marker == '12S' }
+    // ── Collective (post-merge) taxonomy ───────────────────────────────────
+    // Taxonomy is assigned once per marker, on the marker-level merged,
+    // chimera-free ASV set — not per-sample, on private pre-merge ASVs (the
+    // old behavior). This matches the source Snakemake pipeline's own
+    // design (DADA2 + SINTAX both run collectively across all samples).
+    ch_merged_all = MERGE_ASV_TABLES.out.merged_table
+        .join(MERGE_ASV_TABLES.out.merged_fasta, by: 0)
+        .join(MERGE_ASV_TABLES.out.asv_lookup, by: 0)
 
+    // 12S: SINTAX taxonomy (3 databases) + LOD blank cleanup.
+    if (markers_list.contains('12S') && params.sintax.enabled) {
+        ch_merged_12s = ch_merged_all.filter { marker, table, fasta, lookup -> marker == '12S' }
         SINTAX_12S(ch_merged_12s)
+    }
+
+    // 16S/18S/ITS/CO1/RBCL: generic dada2/rdp/blast taxonomy (per marker's
+    // params.databases[marker].method), joined with per-sample counts into
+    // one combined ASV + sequence + taxonomy-lineage table.
+    if (markers_list.contains('16S')) {
+        COLLECTIVE_TAXONOMY_16S(ch_merged_all.filter { m, t, f, l -> m == '16S' }, '16S', loadMarkerParams('16S'))
+    }
+    if (markers_list.contains('18S')) {
+        COLLECTIVE_TAXONOMY_18S(ch_merged_all.filter { m, t, f, l -> m == '18S' }, '18S', loadMarkerParams('18S'))
+    }
+    if (markers_list.contains('ITS')) {
+        COLLECTIVE_TAXONOMY_ITS(ch_merged_all.filter { m, t, f, l -> m == 'ITS' }, 'ITS', loadMarkerParams('ITS'))
+    }
+    if (markers_list.contains('CO1')) {
+        COLLECTIVE_TAXONOMY_CO1(ch_merged_all.filter { m, t, f, l -> m == 'CO1' }, 'CO1', loadMarkerParams('CO1'))
+    }
+    if (markers_list.contains('RBCL')) {
+        COLLECTIVE_TAXONOMY_RBCL(ch_merged_all.filter { m, t, f, l -> m == 'RBCL' }, 'RBCL', loadMarkerParams('RBCL'))
     }
 
     // ── MultiQC report ────────────────────────────────────────────────────
@@ -299,18 +318,27 @@ workflow {
     MULTIQC(ch_multiqc_files)
 
     // ── Ecological analysis ───────────────────────────────────────────────
-    // 12S is excluded from the arbitrary "first sample's taxonomy" pick
-    // below (its generic per-sample taxonomy is a NO_FILE placeholder — see
-    // the tax_method == 'skip' guard in amplicon_processing.nf) and gets
-    // SINTAX_12S's blank-cleaned taxonomy substituted in instead.
-    ch_taxonomy_by_marker = ch_taxonomy_tbls
-        .filter { meta, tbl -> meta.marker != '12S' }
-        .map { meta, tbl -> [ meta.marker, tbl ] }
-        .groupTuple()
-        .map { marker, tbls -> [ marker, tbls[0] ] }
-
+    // Every marker's taxonomy now comes from its own collective (post-merge)
+    // step, keyed by sequence to match merged_asv_table.tsv's asv_id — no
+    // more picking one arbitrary sample's taxonomy as a marker-wide stand-in.
+    ch_taxonomy_by_marker = Channel.empty()
     if (markers_list.contains('12S') && params.sintax.enabled) {
         ch_taxonomy_by_marker = ch_taxonomy_by_marker.mix(SINTAX_12S.out.blank_cleaned_wide)
+    }
+    if (markers_list.contains('16S')) {
+        ch_taxonomy_by_marker = ch_taxonomy_by_marker.mix(COLLECTIVE_TAXONOMY_16S.out.taxonomy_for_ecology)
+    }
+    if (markers_list.contains('18S')) {
+        ch_taxonomy_by_marker = ch_taxonomy_by_marker.mix(COLLECTIVE_TAXONOMY_18S.out.taxonomy_for_ecology)
+    }
+    if (markers_list.contains('ITS')) {
+        ch_taxonomy_by_marker = ch_taxonomy_by_marker.mix(COLLECTIVE_TAXONOMY_ITS.out.taxonomy_for_ecology)
+    }
+    if (markers_list.contains('CO1')) {
+        ch_taxonomy_by_marker = ch_taxonomy_by_marker.mix(COLLECTIVE_TAXONOMY_CO1.out.taxonomy_for_ecology)
+    }
+    if (markers_list.contains('RBCL')) {
+        ch_taxonomy_by_marker = ch_taxonomy_by_marker.mix(COLLECTIVE_TAXONOMY_RBCL.out.taxonomy_for_ecology)
     }
 
     ch_ecology_input = MERGE_ASV_TABLES.out.merged_table

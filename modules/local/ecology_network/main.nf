@@ -137,9 +137,17 @@ process ECOLOGY_NETWORK {
                                 vertices=rownames(asv_tab))
 
     # Node attributes (taxonomy)
+    # betweenness()/closeness() are shortest-path algorithms and require
+    # positive weights interpreted as distances -- E(g)'s weight attr is the signed
+    # Spearman correlation (can be negative for "negative" association
+    # edges), which igraph would otherwise pick up implicitly and reject.
+    # Convert to a distance where stronger correlation (either sign) means a
+    # shorter path, matching the |weight| convention already used for edge
+    # width in the plot below.
+    dist_weight       <- 1 - abs(E(g)\$weight)
     V(g)\$degree      <- degree(g)
-    V(g)\$betweenness <- betweenness(g, normalized=TRUE)
-    V(g)\$closeness   <- closeness(g, normalized=TRUE)
+    V(g)\$betweenness <- betweenness(g, weights=dist_weight, normalized=TRUE)
+    V(g)\$closeness   <- closeness(g, weights=dist_weight, normalized=TRUE)
     if ("Phylum" %in% colnames(tax_tab)) {
         V(g)\$phylum <- tax_tab[V(g)\$name, "Phylum"]
     } else {
@@ -165,8 +173,8 @@ process ECOLOGY_NETWORK {
             round(transitivity(g, type="global"), 4),
             comps\$no,
             max(comps\$csize),
-            tryCatch(round(mean_distance(g), 3), error=function(e) NA),
-            tryCatch(diameter(g), error=function(e) NA)
+            tryCatch(round(mean_distance(g, weights=dist_weight), 3), error=function(e) NA),
+            tryCatch(diameter(g, weights=dist_weight), error=function(e) NA)
         )
     )
     write.table(net_stats, file.path(out_dir, "network_statistics.tsv"),
