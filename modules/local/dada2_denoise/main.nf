@@ -57,10 +57,15 @@ process DADA2_DENOISE {
         rev_filter <- gsub("trimmed", "filtered", rev_files)
 
         # Per-read minLen: use truncation length when truncating (reads will be
-        # exactly truncLen after filtering), otherwise fall back to min_length.
+        # exactly truncLen after filtering). min_length/max_length describe the
+        # final MERGED amplicon length (applied below, after merging) -- they
+        # are the wrong floor for an individual pre-merge R1/R2 read whenever
+        # the amplicon is longer than one read (the untruncated/variable-length
+        # case, trunc_len == 0), so fall back to DADA2's own conventional
+        # default (20) instead of min_length there.
         min_per_read <- min(
-            ifelse(trunc_len_f > 0, trunc_len_f, min_length),
-            ifelse(trunc_len_r > 0, trunc_len_r, min_length)
+            ifelse(trunc_len_f > 0, trunc_len_f, 20L),
+            ifelse(trunc_len_r > 0, trunc_len_r, 20L)
         )
 
         # Re-filter for this sample
@@ -130,7 +135,8 @@ process DADA2_DENOISE {
 
     } else {
         fwd_filter <- gsub("trimmed", "filtered", all_files)
-        min_per_read <- ifelse(trunc_len_f > 0, trunc_len_f, min_length)
+        # See paired-end branch above for why this isn't min_length.
+        min_per_read <- ifelse(trunc_len_f > 0, trunc_len_f, 20L)
 
         out_filter <- filterAndTrim(
             all_files, fwd_filter,
