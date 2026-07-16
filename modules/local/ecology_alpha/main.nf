@@ -113,8 +113,20 @@ process ECOLOGY_ALPHA {
     }
 
     # ── 1. Richness and diversity metrics ────────────────────────────────
+    # Fisher's alpha (vegan::fisher.alpha(), called internally by
+    # estimate_richness()) can fail to converge on low-read-count samples
+    # (e.g. blanks) and return a malformed shape, crashing the WHOLE call --
+    # not just that one sample. Retry without it rather than losing every
+    # other metric too.
     alpha_metrics <- c("Observed","Chao1","ACE","Shannon","Simpson","InvSimpson","Fisher")
-    alpha_df      <- estimate_richness(ps, measures = alpha_metrics)
+    alpha_df <- tryCatch(
+        estimate_richness(ps, measures = alpha_metrics),
+        error = function(e) {
+            message("estimate_richness() failed with Fisher's alpha included (",
+                    conditionMessage(e), "); retrying without it.")
+            estimate_richness(ps, measures = setdiff(alpha_metrics, "Fisher"))
+        }
+    )
     alpha_df\$sample <- rownames(alpha_df)
 
     # Add Pielou's evenness
@@ -142,8 +154,8 @@ process ECOLOGY_ALPHA {
     for (m in metrics_to_plot) {
         if (!m %in% colnames(alpha_df)) next
         p <- ggplot(alpha_df, aes(x = if (!is.null(grp)) .data[[grp]] else "all",
-                                          y = m,
-                                          fill = if (!is.null(grp)) grp else "NULL")) +
+                                          y = .data[[m]],
+                                          fill = if (!is.null(grp)) .data[[grp]] else "NULL")) +
             geom_boxplot(alpha=0.7, outlier.shape=NA) +
             geom_jitter(width=0.15, size=1.5, alpha=0.8) +
             theme_bw(base_size=12) +
