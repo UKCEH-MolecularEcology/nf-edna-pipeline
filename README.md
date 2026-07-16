@@ -8,6 +8,7 @@ A Nextflow DSL2 pipeline for **multi-marker eDNA metabarcoding** — from raw pa
 
 - [Overview](#overview)
 - [Pipeline summary](#pipeline-summary)
+- [12S: Tapirs + SINTAX](#12s-tapirs--sintax-optional-in-addition-to-the-generic-path)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Database setup](#database-setup)
@@ -282,6 +283,39 @@ Use `-resume` to restart from the last successful step after a failure or parame
 
 > **Without metadata:** All quality, denoising, and taxonomy steps run normally. Ecology analyses run in unsupervised mode — alpha diversity, ordination, barplots, and co-occurrence networks are produced, but group-dependent analyses (PERMANOVA, differential abundance, IndVal, envfit) are automatically skipped.
 
+### Running with raw vs. already-primer-trimmed reads
+
+By default the pipeline expects **raw** reads and trims primers itself with
+Cutadapt (searching for the marker's primer sequence, discarding reads where
+it can't find one). If your reads have already had primers removed upstream
+— e.g. delivered pre-trimmed by a sequencing facility — add
+`--primers_already_removed true` so Cutadapt copies reads through unchanged
+instead of searching for a primer sequence that's no longer there (which
+would otherwise discard nearly all reads via `--discard-untrimmed`):
+
+```bash
+# Raw reads (default) — Cutadapt searches for and trims primers
+nextflow run main.nf \
+    --input samplesheet.csv \
+    --markers 16S,18S,ITS,CO1,12S \
+    --cores 64 \
+    --outdir results/ \
+    -profile singularity
+
+# Already-primer-trimmed reads — Cutadapt is a pass-through
+nextflow run main.nf \
+    --input samplesheet.csv \
+    --markers 16S,18S,ITS,CO1,12S \
+    --primers_already_removed true \
+    --cores 64 \
+    --outdir results/ \
+    -profile singularity
+```
+
+This is an all-or-nothing flag for the whole run, not per-marker — see
+[Primer trimming (Cutadapt)](#primer-trimming-cutadapt) under Parameters for
+details and when you'd need it.
+
 ---
 
 ## Samplesheet generation
@@ -420,6 +454,21 @@ Use `bin/make_samplesheet.py --metadata` to automatically filter your metadata f
 |-----------|---------|-------------|
 | `--rdp_mem` | `8g` | JVM heap size for RDP Classifier (e.g. `8g`, `16g`) |
 | `--rdp_bootstrap` | `0.70` | Minimum bootstrap confidence (0–1) to retain a rank assignment. 0.70 gives ~90% accuracy at genus level for ≥400 bp reads |
+
+### Primer trimming (Cutadapt)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--primers_already_removed` | `false` | Set `true` when input reads already had primers stripped upstream (see [Running with raw vs. already-primer-trimmed reads](#running-with-raw-vs-already-primer-trimmed-reads)). Cutadapt copies reads through unchanged instead of searching for a primer sequence — applies to every marker in the run, not configurable per-marker |
+| `--cutadapt_args` | `--discard-untrimmed --minimum-length 50` | Extra Cutadapt arguments used in the default (raw-reads) mode. Ignored when `--primers_already_removed true` |
+
+**When you need `--primers_already_removed true`:** if Cutadapt's log
+(`results/trimmed/{MARKER}/*.log`) shows most/all reads discarded
+("untrimmed"), or MultiQC shows a suspiciously low percentage of reads
+surviving trimming, that's the signature of feeding it reads that don't
+actually contain the expected primer sequence anymore — either because
+they were pre-trimmed upstream, or because the wrong primer set is
+configured for this marker/region.
 
 ### Primer parameters
 
