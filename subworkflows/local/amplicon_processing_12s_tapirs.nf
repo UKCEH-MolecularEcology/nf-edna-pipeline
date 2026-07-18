@@ -75,10 +75,10 @@ workflow TAPIRS_12S {
         ch_blast_db_dir    = Channel.value(blast_db_path.getParent())
         ch_blast_db_prefix = Channel.value(blast_db_path.getName())
 
-        TAPIRS_BLAST(TAPIRS_VSEARCH_CHIMERA.out.nonchimeras, ch_blast_db_dir, ch_blast_db_prefix)
+        TAPIRS_BLAST(TAPIRS_VSEARCH_CHIMERA.out.nonchimeras, ch_blast_db_dir, ch_blast_db_prefix, t.blast)
         ch_versions = ch_versions.mix(TAPIRS_BLAST.out.versions.first())
 
-        TAPIRS_BLAST_LCA(TAPIRS_BLAST.out.blast_tsv, ch_taxdump_dir)
+        TAPIRS_BLAST_LCA(TAPIRS_BLAST.out.blast_tsv, ch_taxdump_dir, 'blast', t.mlca)
         ch_versions = ch_versions.mix(TAPIRS_BLAST_LCA.out.versions.first())
 
         ch_lca_all = TAPIRS_BLAST_LCA.out.lca.map { meta, tsv -> tsv }.collect()

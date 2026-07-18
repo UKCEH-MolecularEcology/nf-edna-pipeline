@@ -6,7 +6,9 @@ process TAPIRS_BLAST_LCA {
 
     input:
     tuple val(meta), path(blast_tsv)
-    path taxdump_dir
+    path taxdump_dir      // NCBI taxdump dir (nodes/names/merged.dmp), or assets/NO_FILE when lineage_mode=='coidb'
+    val lineage_mode      // 'blast' (NCBI staxids via taxdump) | 'coidb' (self-describing reference headers)
+    val mlca_opts         // { identity, coverage, bitscore, majority, min_hits }
 
     output:
     tuple val(meta), path('*.lca.tsv'), emit: lca
@@ -14,11 +16,12 @@ process TAPIRS_BLAST_LCA {
 
     script:
     def prefix = "${meta.id}"
-    def m = params.tapirs.mlca
+    def m = mlca_opts
+    def taxdump_arg = lineage_mode == 'coidb' ? '' : "--taxdump ${taxdump_dir} "
     """
     taxdump_lineage.py \\
-        --taxdump ${taxdump_dir} \\
-        --mode blast \\
+        ${taxdump_arg}\\
+        --mode ${lineage_mode} \\
         --in ${blast_tsv} \\
         --out ${prefix}.blast.tax.tsv
 

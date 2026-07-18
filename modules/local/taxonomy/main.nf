@@ -15,8 +15,9 @@ process TAXONOMY {
     input:
     tuple val(marker), path(fasta)   // marker-level, collective FASTA (post MERGE_ASV_TABLES) — see collective_taxonomy.nf
     path  tax_db
-    val   db_type    // silva | unite | midori | pr2 | rdp
-    val   tax_method // dada2 | blast | rdp
+    val   db_type       // silva | unite | midori | coidb | pr2 | rdp
+    val   tax_method    // dada2 | blast | rdp
+    path  addspecies_db // dada2 only: exact-match species DB for addSpecies(), or assets/NO_FILE
 
     output:
     tuple val(marker), path('*.taxonomy.tsv'), emit: taxonomy
@@ -91,23 +92,21 @@ process TAXONOMY {
         """
     } else {
         // DADA2 assignTaxonomy (naive Bayesian classifier)
-        // Handles SILVA, UNITE, MIDORI, PR2 formatted databases
-        def species_db = db_type == 'silva'
-            ? file(tax_db.toString().replaceAll('train_set', 'species_assignment'))
-            : null
-        def add_species = (db_type == 'silva' && species_db?.exists()) ? 'TRUE' : 'FALSE'
+        // Handles SILVA, UNITE, MIDORI, coidb, PR2 formatted databases
+        def add_species = (addspecies_db.name != 'NO_FILE') ? 'TRUE' : 'FALSE'
 
         """
         #!/usr/bin/env Rscript
         library(dada2)
         library(Biostrings)
 
-        marker     <- "${marker}"
-        db_type    <- "${db_type}"
-        fasta_file <- "${fasta}"
-        tax_db     <- "${tax_db}"
-        prefix     <- "${prefix}"
-        add_species <- as.logical("${add_species}")
+        marker         <- "${marker}"
+        db_type        <- "${db_type}"
+        fasta_file     <- "${fasta}"
+        tax_db         <- "${tax_db}"
+        addspecies_db  <- "${addspecies_db}"
+        prefix         <- "${prefix}"
+        add_species    <- as.logical("${add_species}")
 
         # readDNAStringSet (unlike getSequences) preserves the FASTA headers
         # (ASV1, ASV2, ...) as names -- assignTaxonomy() below only accepts a
@@ -144,11 +143,24 @@ process TAXONOMY {
 
         tax_table   <- taxa\$tax
         boot_table  <- taxa\$boot
+
+        # addSpecies() does exact/near-exact sequence matching for species-level
+        # ID -- much more reliable than naive-Bayes bootstrap at that depth.
+        # Must run before the rowname remap below: it matches by the ASV's
+        # actual sequence, which is what tax_table's rownames still are here.
+        # No multithread param exists for addSpecies() -- it scans the
+        # reference in chunks of `n` sequences regardless of query count, so
+        # for large references (coidb is ~4.7M seqs) the chunk count (not
+        # thread count) is what to tune; raise n well above the default 2000.
+        if (add_species) {
+            tax_table <- addSpecies(tax_table, addspecies_db, n=20000, verbose=TRUE)
+        }
+
         rownames(tax_table)  <- unname(seq_to_label[rownames(tax_table)])
         rownames(boot_table) <- unname(seq_to_label[rownames(boot_table)])
 
         # Format ranks based on database type
-        if (db_type %in% c("silva", "midori")) {
+        if (db_type %in% c("silva", "midori", "coidb")) {
             rank_names <- c("Kingdom","Phylum","Class","Order","Family","Genus","Species")
         } else if (db_type == "pr2") {
             rank_names <- c("Domain","Supergroup","Division","Subdivision",

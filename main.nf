@@ -20,6 +20,7 @@ include { AMPLICON_PROCESSING as AMPLICON_PROCESSING_12S  } from './subworkflows
 include { AMPLICON_PROCESSING as AMPLICON_PROCESSING_RBCL } from './subworkflows/local/amplicon_processing'
 include { TAPIRS_12S                            } from './subworkflows/local/amplicon_processing_12s_tapirs'
 include { SINTAX_12S                            } from './subworkflows/local/amplicon_processing_12s_sintax'
+include { TAPIRS_BLAST_LCA_CO1                  } from './subworkflows/local/tapirs_blast_lca_co1'
 include { COLLECTIVE_TAXONOMY as COLLECTIVE_TAXONOMY_16S  } from './subworkflows/local/collective_taxonomy'
 include { COLLECTIVE_TAXONOMY as COLLECTIVE_TAXONOMY_18S  } from './subworkflows/local/collective_taxonomy'
 include { COLLECTIVE_TAXONOMY as COLLECTIVE_TAXONOMY_ITS  } from './subworkflows/local/collective_taxonomy'
@@ -306,6 +307,13 @@ workflow {
     }
     if (markers_list.contains('CO1')) {
         COLLECTIVE_TAXONOMY_CO1(ch_merged_all.filter { m, t, f, l -> m == 'CO1' }, 'CO1', loadMarkerParams('CO1'))
+
+        // CO1's own BLAST + majority-vote-LCA branch (via coidb) -- a second,
+        // independent taxonomy call for comparison, same shape as 12S's
+        // Tapirs branch: standalone, does not feed ecology.
+        if (params.tapirs_blast_lca_co1.enabled) {
+            TAPIRS_BLAST_LCA_CO1(ch_merged_all.filter { m, t, f, l -> m == 'CO1' }, params.tapirs_blast_lca_co1)
+        }
     }
     if (markers_list.contains('RBCL')) {
         COLLECTIVE_TAXONOMY_RBCL(ch_merged_all.filter { m, t, f, l -> m == 'RBCL' }, 'RBCL', loadMarkerParams('RBCL'))
@@ -392,7 +400,8 @@ def loadMarkerParams(marker) {
         max_ee_r:      primers.max_ee_r ?: 2,
         tax_db:        file(db.path),
         tax_db_type:   db.type,
-        tax_method:    db.method
+        tax_method:    db.method,
+        addspecies_db: db.addspecies_path ? file(db.addspecies_path) : file("${projectDir}/assets/NO_FILE")
     ]
 }
 

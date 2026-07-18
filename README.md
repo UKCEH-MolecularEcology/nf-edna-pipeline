@@ -9,6 +9,7 @@ A Nextflow DSL2 pipeline for **multi-marker eDNA metabarcoding** — from raw pa
 - [Overview](#overview)
 - [Pipeline summary](#pipeline-summary)
 - [12S: Tapirs + SINTAX](#12s-tapirs--sintax-optional-in-addition-to-the-generic-path)
+- [CO1: BLAST + majority-vote LCA (via coidb)](#co1-blast--majority-vote-lca-via-coidb-optional-in-addition-to-the-generic-path)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Database setup](#database-setup)
@@ -52,7 +53,7 @@ Raw reads (FASTQ)
 │   ├── 16S   →  SILVA 138.1            (DADA2 naive Bayesian)
 │   ├── 18S   →  PR2 v5.0              (DADA2 naive Bayesian)
 │   ├── ITS   →  UNITE v10             (DADA2 naive Bayesian)
-│   ├── CO1   →  MIDORI2 (GB262)       (DADA2 naive Bayesian)
+│   ├── CO1   →  coidb (SciLifeLab)    (DADA2 naive Bayesian + addSpecies)
 │   ├── 12S   →  SINTAX, 3 databases   (only when --sintax.enabled — see below)
 │   └── rbcL  →  rbcLClassifier v1     (RDP Classifier, NCBI-trained)
 │
@@ -145,6 +146,70 @@ true` available if a fusion tag was used in library prep.
 
 ---
 
+## CO1: BLAST + majority-vote LCA (via coidb) (optional, in addition to the generic path)
+
+CO1 gets a second, independent taxonomy call alongside its generic
+DADA2/coidb path above — a BLAST + majority-vote-LCA branch reusing the same
+`TAPIRS_BLAST`/`TAPIRS_BLAST_LCA` modules 12S's Tapirs branch uses (see
+above), pointed at coidb instead of an NCBI-taxdump-backed database. Opt-in
+(`--tapirs_blast_lca_co1.enabled true`), self-contained, does **not** feed
+ecology — it's there for comparison against the DADA2/naive-Bayes result,
+same as 12S's Tapirs OTU tables sit alongside its SINTAX result.
+
+Unlike 12S's Tapirs branch, this runs on the **collective, post-merge** CO1
+ASV set (`results/asv_tables/CO1/CO1.merged_asv.fasta`), not per-sample raw
+reads — coidb classification only needs a query FASTA, so there's no need to
+re-derive OTUs via a separate fastp/vsearch front end when DADA2's ASVs
+already exist.
+
+```
+Merged CO1 ASVs (post MERGE_ASV_TABLES)
+│
+├── BLAST vs. coidb (BLAST-formatted reference, see below)
+├── Lineage parsed directly from each hit's title (coidb headers already
+│   ARE a full Kingdom;Phylum;Class;Order;Family;Genus;Species lineage —
+│   no NCBI taxid/taxdump resolution needed or possible)
+└── Majority-vote LCA (same algorithm/thresholds as 12S's Tapirs branch)
+    → {MARKER}_blast.asv_taxonomy_abundance.tsv / taxonomy_by_sequence.tsv
+```
+
+Needs its own BLAST-formatted database (separate from the DADA2-formatted
+`coidb.dada2.toGenus.exclNA.fasta.gz` used by the generic path) — build it
+once from `coidb.dada2.toSpecies.exclNA.fasta.gz`:
+
+```bash
+# BLAST splits a hit's ID at the first whitespace, and coidb's own headers
+# have a space inside the trailing "Genus species" binomial -- replace it
+# so the whole lineage survives as one token, then prefix a short synthetic
+# ID (the raw header is too long for -parse_seqids' 50-char ID limit).
+zcat coidb.dada2.toSpecies.exclNA.fasta.gz | awk '
+    /^>/ { n++; gsub(/ /, "_"); sub(/^>/, ""); print ">seq_" n " " $0; next }
+    { print }
+' > coidb_reformatted.fasta
+
+makeblastdb -in coidb_reformatted.fasta -dbtype nucl -parse_seqids -out coidb_blastdb/coidb
+```
+
+Then point config at it:
+
+```groovy
+tapirs_blast_lca_co1 {
+    enabled = true
+    blast {
+        db_dir    = "/path/to/coidb_blastdb"
+        db_prefix = 'coidb'
+    }
+}
+```
+
+Output: `results/tapirs_blast/CO1/CO1_blast.asv_taxonomy_abundance.tsv` (ASV,
+sequence, per-sample counts, taxonomy lineage, plus `lca_rank`/`lca_method`
+QC columns) and `CO1_blast.taxonomy_by_sequence.tsv` (sequence-keyed,
+matching the shape ecology would expect if you ever want to feed this in
+instead of the DADA2 result).
+
+---
+
 ## Requirements
 
 | Software | Minimum version | Notes |
@@ -208,15 +273,29 @@ bash assets/download_databases.sh databases/
 This downloads:
 - **SILVA 138.1** (16S) from Zenodo
 - **PR2 v5.0** (18S) from GitHub
-- **MIDORI2 GB262** (CO1) from the MIDORI website
 - **rbcLClassifier v1** (rbcL) from GitHub — RDP Classifier trained on NCBI plant rbcL sequences (Kress & Porter 2020); citable archive at [doi:10.5281/zenodo.4741459](https://doi.org/10.5281/zenodo.4741459)
 
 > **UNITE (ITS)** requires manual download due to licensing. Go to [unite.ut.ee/repository.php](https://unite.ut.ee/repository.php), download the *General FASTA release — developer s_all version*, and place it in `databases/`. Update the path in `nextflow.config` accordingly.
 
-> **12S** does not use this auto-download mechanism — its taxonomy comes from
+> **CO1** uses `coidb` (SciLifeLab/Insect Biome Atlas), not MIDORI2, and does
+> not use the auto-download mechanism above — download it yourself. MIDORI2
+> has no bacterial reference at all, so it can't recognize when a CO1 ASV is
+> actually off-target bacterial DNA (common with Leray/jgHCO2198 primers,
+> especially Pseudomonadota — mitochondrial COI is itself descended from an
+> alphaproteobacterial ancestor, so the two are genuinely homologous and
+> cross-amplify) — it just confidently mis-assigns those reads to some
+> eukaryotic phylum instead of flagging them as non-target. coidb includes
+> both, so it can actually tell target reads from contamination. Needs two
+> files: `coidb.dada2.toGenus.exclNA.fasta.gz` (for `assignTaxonomy()`) and
+> `coidb.dada2.addSpecies.exclNA.fasta.gz` (for `addSpecies()`, exact-match
+> species ID — much more reliable than naive-Bayes bootstrap at that depth).
+
+> **12S** does not use this auto-download mechanism either — its taxonomy comes from
 > the dedicated Tapirs/SINTAX branches (BLAST/Kraken2/taxdump + SINTAX
 > against 3 databases), each with its own required paths under
 > `params.tapirs` / `params.sintax`. See [12S: Tapirs + SINTAX](#12s-tapirs--sintax-optional-in-addition-to-the-generic-path) below.
+> CO1 has its own optional, second Tapirs-style branch too — see
+> [CO1: BLAST + majority-vote LCA (via coidb)](#co1-blast--majority-vote-lca-via-coidb-optional-in-addition-to-the-generic-path).
 
 After downloading, verify the paths in `nextflow.config` under `params.databases` match your local files:
 
@@ -225,7 +304,10 @@ databases {
     '16S'  { path = "${projectDir}/databases/silva_nr99_v138.1_train_set.fa.gz" }
     '18S'  { path = "${projectDir}/databases/pr2_version_5.0.0_SSU_dada2.fasta.gz" }
     'ITS'  { path = "${projectDir}/databases/sh_general_release_dynamic_s_all_19.02.2024.fasta.gz" }
-    'CO1'  { path = "${projectDir}/databases/MIDORI2_LONGEST_NUC_GB262_CO1_DADA2.fasta.gz" }
+    'CO1'  {
+        path            = "/path/to/coidb_scilifelab/dada2/coidb.dada2.toGenus.exclNA.fasta.gz"
+        addspecies_path = "/path/to/coidb_scilifelab/dada2/coidb.dada2.addSpecies.exclNA.fasta.gz"
+    }
     'RBCL' { path = "${projectDir}/databases/rbcLv1_trained/mydata_trained" }
 }
 ```
@@ -610,6 +692,9 @@ results/
 │   ├── {experiment}_kraken2_conf{c}_{method}.tsv     OTU table (Kraken2 route)
 │   ├── {experiment}_kraken2_conf{c}_{method}_full_lineage.tsv
 │   └── 09_rereplicated/{SAMPLE}/       Rereplicated per-sample FASTA
+├── tapirs_blast/CO1/                  CO1 BLAST+LCA branch, via coidb (--tapirs_blast_lca_co1.enabled true)
+│   ├── CO1_blast.asv_taxonomy_abundance.tsv  ASV, sequence, counts, taxonomy + lca_rank/lca_method
+│   └── CO1_blast.taxonomy_by_sequence.tsv    Sequence-keyed (standalone — doesn't feed ecology)
 ├── sintax/12S/                        12S SINTAX branch (--sintax.enabled true)
 │   ├── 12S.asv_taxonomy_compare.tsv    3-database taxonomy comparison
 │   ├── 12S.sintax_database_summary.tsv Per-database assignment-rate summary
@@ -677,7 +762,16 @@ Default primers used by the pipeline. To use different primers, override `params
 : Check that `--taxonomy`/the wiring is using `asv_taxonomy/{MARKER}/{MARKER}.taxonomy_by_sequence.tsv`, not `taxonomy/{MARKER}/{MARKER}.taxonomy.tsv`. The ecology modules intersect ASV table row names against taxonomy row names — a label-keyed vs. sequence-keyed mismatch produces zero overlap silently (a `skipped.txt: empty ASV table` file, not an error) even though both input files individually contain real data.
 
 **`TAXONOMY` process exceeded its running time limit**
-: The collective (post-merge) taxonomy step classifies every ASV for a marker in one task — this can be tens of thousands of ASVs for ITS/CO1 against large databases (UNITE, MIDORI2). It has a dedicated `withName: 'TAXONOMY'` override in `nextflow.config` (`cpus = params.cores`, `time = 48.h * task.attempt`) separate from the shared `process_high` ceiling, precisely because it needs both more threads and more time than other `process_high` steps. If it's still timing out, increase `--cores` or raise that override's `time` further.
+: The collective (post-merge) taxonomy step classifies every ASV for a marker in one task — this can be tens of thousands of ASVs for ITS/CO1 against large databases (UNITE, coidb). It has a dedicated `withName: 'TAXONOMY'` override in `nextflow.config` (`cpus = params.cores`, `time = 48.h * task.attempt`) separate from the shared `process_high` ceiling, precisely because it needs both more threads and more time than other `process_high` steps. If it's still timing out, increase `--cores` or raise that override's `time` further.
+
+**CO1 taxonomy has a lot of unresolved/low-confidence ASVs, or looks suspicious**
+: Check the Kingdom column first — a large fraction of CO1 ASVs being non-Animalia (commonly Pseudomonadota/other Bacteria) is common and expected with Leray/jgHCO2198 primers, not a pipeline bug: mitochondrial COI is evolutionarily derived from an alphaproteobacterial ancestor, so bacterial cytochrome oxidase genes are genuinely homologous and cross-amplify. This is exactly why CO1 uses `coidb` (has both bacterial and eukaryotic references) rather than MIDORI2 (eukaryote-only, so it can't recognize off-target reads and silently mis-assigns them to some eukaryotic phylum instead). For a second opinion on any given ASV, compare against the optional [BLAST + majority-vote LCA branch](#co1-blast--majority-vote-lca-via-coidb-optional-in-addition-to-the-generic-path) (`results/tapirs_blast/CO1/`).
+
+**`addSpecies()` (CO1) is slow**
+: Unlike `assignTaxonomy()`, DADA2's `addSpecies()` has no `multithread` parameter at all — it scans the reference in sequential chunks of `n` sequences (default 2000) regardless of query/core count, so for a reference the size of coidb (~4.7M sequences) that's ~2,300+ chunks. The `TAXONOMY` module explicitly raises this to `n=20000` to cut chunk count roughly 10x; if it's still too slow, raise `n` further in `modules/local/taxonomy/main.nf`'s `addSpecies()` call (bounded by available memory per chunk, not cores).
+
+**Tapirs BLAST steps not using multiple threads**
+: Same `process_high`-label-resolving-to-1-cpu issue as `TAXONOMY`/`ECOLOGY_ALPHA` — `TAPIRS_BLAST` has an explicit `withName` override in `nextflow.config` (`cpus = params.cores`) for exactly this reason. Matters most for CO1's Tapirs branch, which BLASTs the entire collective ASV set in one task rather than per-sample.
 
 **OutOfMemoryError in DADA2 or taxonomy**
 : Increase `--max_memory` (e.g. `--max_memory 256.GB`) or set `process.memory` directly in a custom config.

@@ -12,7 +12,7 @@ workflow COLLECTIVE_TAXONOMY {
     take:
     ch_merged       // [ marker, merged_table, merged_fasta, asv_lookup ] — singleton, one marker
     marker
-    marker_params   // { tax_db, tax_db_type, tax_method } from loadMarkerParams(marker)
+    marker_params   // { tax_db, tax_db_type, tax_method, addspecies_db } from loadMarkerParams(marker)
 
     main:
     ch_versions = Channel.empty()
@@ -21,7 +21,8 @@ workflow COLLECTIVE_TAXONOMY {
         ch_merged.map { m, table, fasta, lookup -> [ m, fasta ] },
         marker_params.tax_db,
         marker_params.tax_db_type,
-        marker_params.tax_method
+        marker_params.tax_method,
+        marker_params.addspecies_db
     )
     ch_versions = ch_versions.mix(TAXONOMY.out.versions)
 

@@ -5,9 +5,16 @@ Resolve NCBI taxids to a fixed 7-rank taxonomy string using a local taxdump
 with it. Shared by the tapirs_blast_lca and tapirs_kraken2_taxonomy modules
 so the taxdump-parsing logic exists in exactly one place.
 
+--mode coidb is a different, taxdump-free path for self-describing
+references (e.g. coidb) whose BLAST hit title (stitle) already IS a
+";"-joined "Kingdom;Phylum;Class;Order;Family;Genus;Species;" lineage
+string -- it's parsed directly instead of resolved via an NCBI taxid, and
+needs no --taxdump directory at all.
+
 Usage:
     taxdump_lineage.py --taxdump DIR --mode blast    --in IN.blast.tsv --out OUT.blast.tax.tsv
     taxdump_lineage.py --taxdump DIR --mode kraken2  --in IN.krk       --out OUT.krk.tax.tsv
+    taxdump_lineage.py             --mode coidb     --in IN.blast.tsv --out OUT.blast.tax.tsv
 """
 
 import argparse
@@ -166,6 +173,28 @@ def run_blast_mode(taxdump, in_path, out_path):
             fout.write(line + "\t" + "/".join(tax_values) + "\n")
 
 
+def run_coidb_mode(in_path, out_path):
+    """Append a /-joined 7-rank taxonomy string as a 9th column, parsed
+    directly from the BLAST hit's stitle. coidb's own reference headers
+    already ARE a "Kingdom;Phylum;Class;Order;Family;Genus;Species;"
+    lineage, so no taxid/taxdump resolution is needed or possible (coidb
+    has no real NCBI taxids)."""
+    with open(in_path) as fin, open(out_path, "w") as fout:
+        for line in fin:
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            fields = line.split("\t")
+            if len(fields) < 2:
+                fout.write(line + "\t" + "/".join([UNKNOWN] * len(RANKS)) + "\n")
+                continue
+            stitle = fields[1].strip().rstrip(";")
+            parts = stitle.split(";") if stitle else []
+            tax_values = [(p if p else UNKNOWN) for p in parts[:len(RANKS)]]
+            tax_values += [UNKNOWN] * (len(RANKS) - len(tax_values))
+            fout.write(line + "\t" + "/".join(tax_values) + "\n")
+
+
 def run_kraken2_mode(taxdump, in_path, out_path):
     """Resolve each classified kraken2 read to a tax_rank/otu_id/7-rank row."""
     header = "query\ttax_rank\totu_id\t" + "\t".join(RANK_LABELS) + "\n"
@@ -194,11 +223,22 @@ def run_kraken2_mode(taxdump, in_path, out_path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--taxdump", required=True, help="Directory with nodes.dmp/names.dmp/merged.dmp")
-    parser.add_argument("--mode", required=True, choices=["blast", "kraken2"])
+    parser.add_argument("--taxdump", required=False, default=None,
+                         help="Directory with nodes.dmp/names.dmp/merged.dmp (not used/needed for --mode coidb)")
+    parser.add_argument("--mode", required=True, choices=["blast", "kraken2", "coidb"])
     parser.add_argument("--in", dest="in_path", required=True)
     parser.add_argument("--out", dest="out_path", required=True)
     args = parser.parse_args()
+
+    if args.mode != "coidb" and not args.taxdump:
+        parser.error("--taxdump is required for --mode blast/kraken2")
+
+    if args.mode == "coidb":
+        if not os.path.exists(args.in_path) or os.path.getsize(args.in_path) == 0:
+            open(args.out_path, "w").close()
+            return
+        run_coidb_mode(args.in_path, args.out_path)
+        return
 
     taxdump = Taxdump(args.taxdump)
 

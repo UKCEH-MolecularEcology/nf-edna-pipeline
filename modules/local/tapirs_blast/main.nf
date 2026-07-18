@@ -8,6 +8,7 @@ process TAPIRS_BLAST {
     tuple val(meta), path(nonchimeras)
     path blast_db_dir      // directory containing the BLAST db files
     val blast_db_prefix    // db basename (files under blast_db_dir named <prefix>.n**)
+    val blast_opts         // { min_perc_ident, min_evalue, max_target_seqs }
 
     output:
     tuple val(meta), path('*.blast.tsv'), emit: blast_tsv
@@ -15,7 +16,7 @@ process TAPIRS_BLAST {
 
     script:
     def prefix = "${meta.id}"
-    def b = params.tapirs.blast
+    def b = blast_opts
     """
     if [ -s ${nonchimeras} ]; then
         blastn -query ${nonchimeras} \\
