@@ -22,7 +22,7 @@ nextflow.enable.dsl = 2
  *   # Direct file input (single marker):
  *   nextflow run ecology_pipeline.nf \
  *       --asv_table results/asv_tables/16S/16S.merged_asv_table.tsv \
- *       --taxonomy  results/taxonomy/16S/16S.taxonomy.tsv \
+ *       --taxonomy  results/asv_taxonomy/16S/16S.taxonomy_by_sequence.tsv \
  *       --marker    16S \
  *       --metadata  metadata.tsv \
  *       --outdir    full_ecology/ \
@@ -86,13 +86,15 @@ def buildInputChannel() {
 
     // Expected structure from main pipeline:
     //   {results_dir}/asv_tables/{MARKER}/{MARKER}.merged_asv_table.tsv
-    //   {results_dir}/taxonomy/{MARKER}/{MARKER}*.taxonomy.tsv  (from per-sample; use first one found)
+    //   {results_dir}/asv_taxonomy/{MARKER}/{MARKER}.taxonomy_by_sequence.tsv
     //
-    // If per-marker merged taxonomy doesn't exist, merge per-sample taxonomies on the fly.
+    // Must be the sequence-keyed file, not taxonomy/{MARKER}/{MARKER}.taxonomy.tsv
+    // (that one's keyed by ASV label, not sequence — every ecology module joins
+    // on the raw ASV sequence to match merged_asv_table.tsv's asv_id).
 
     def inputs = markers_list.collect { marker ->
         def asv_pattern = "${results_dir}/asv_tables/${marker}/**merged_asv_table.tsv"
-        def tax_pattern = "${results_dir}/taxonomy/${marker}/**taxonomy.tsv"
+        def tax_pattern = "${results_dir}/asv_taxonomy/${marker}/**taxonomy_by_sequence.tsv"
 
         def asv_files = file(asv_pattern)
         def tax_files = file(tax_pattern)
@@ -111,7 +113,7 @@ def buildInputChannel() {
             return null
         }
         if (!tax_file) {
-            log.warn "No taxonomy table found for ${marker} in ${results_dir}/taxonomy/${marker}/ — skipping."
+            log.warn "No taxonomy table found for ${marker} in ${results_dir}/asv_taxonomy/${marker}/ — skipping."
             return null
         }
 

@@ -48,7 +48,7 @@ Raw reads (FASTQ)
 ├── VSEARCH              — de novo chimera detection (uchime3)
 ├── Merge ASV tables     — cross-sample merge + final bimera removal
 │
-├── Taxonomy assignment  (marker-specific databases)
+├── Taxonomy assignment  (collective, post-merge — one classification per marker, not per sample)
 │   ├── 16S   →  SILVA 138.1            (DADA2 naive Bayesian)
 │   ├── 18S   →  PR2 v5.0              (DADA2 naive Bayesian)
 │   ├── ITS   →  UNITE v10             (DADA2 naive Bayesian)
@@ -119,9 +119,10 @@ Merged 12S ASVs (post MERGE_ASV_TABLES)
     └── QC diagnostics: blank-to-sample ratios, per-database summary stats
 ```
 
-`SINTAX_12S`'s blank-cleaned taxonomy (not the generic per-sample DADA2
-naive-Bayes output) is what feeds 12S's ecology input when `--sintax.enabled
-true`.
+`SINTAX_12S`'s blank-cleaned taxonomy (not the generic collective, post-merge
+taxonomy path used by 16S/18S/ITS/CO1/rbcL) is what feeds 12S's ecology input
+when `--sintax.enabled true`. 12S never runs the generic `TAXONOMY` process at
+all — there is no `results/taxonomy/12S/` directory.
 
 Both branches need real reference data staged locally — set these under
 `params.tapirs` / `params.sintax` in `nextflow.config` (or on the CLI):
@@ -551,12 +552,19 @@ nextflow run ecology_pipeline.nf \
 # Or supply files directly (single marker)
 nextflow run ecology_pipeline.nf \
     --asv_table results/asv_tables/RBCL/RBCL.merged_asv_table.tsv \
-    --taxonomy  results/taxonomy/RBCL/SAMPLE_RBCL.taxonomy.tsv \
+    --taxonomy  results/asv_taxonomy/RBCL/RBCL.taxonomy_by_sequence.tsv \
     --marker    RBCL \
     --metadata  metadata.tsv \
     --outdir    full_ecology/ \
     -profile docker
 ```
+
+> **Note:** `--taxonomy` must point at `asv_taxonomy/{MARKER}/{MARKER}.taxonomy_by_sequence.tsv`,
+> not `taxonomy/{MARKER}/{MARKER}.taxonomy.tsv` — the latter is keyed by ASV
+> label (`ASV1`, `ASV2`, ...), while every ecology module joins on the raw
+> ASV sequence (matching `merged_asv_table.tsv`'s `asv_id`). Feeding it the
+> label-keyed file silently produces an empty intersection and skipped
+> results, not an error.
 
 ### What each module produces
 
@@ -590,9 +598,12 @@ results/
 │   ├── {MARKER}.merged_asv_table.tsv  ← Final ASV count table (ASVs × samples)
 │   ├── {MARKER}.merged_asv_table.rds  Phyloseq-ready RDS
 │   └── {MARKER}.read_tracking.tsv     Reads surviving each step
-├── taxonomy/{MARKER}/
-│   └── {SAMPLE}_{MARKER}.taxonomy.tsv Taxonomy assignments with bootstrap scores
-│                                      (12S: NO_FILE placeholder — see sintax/12S/ instead)
+├── taxonomy/{MARKER}/                 Collective, post-merge taxonomy (one file per marker, not per sample)
+│   └── {MARKER}.taxonomy.tsv          Taxonomy keyed by ASV label (ASV1, ASV2, ...) + bootstrap scores
+│                                      (12S: no directory — see sintax/12S/ instead)
+├── asv_taxonomy/{MARKER}/             ASV + sequence + counts + taxonomy, joined
+│   ├── {MARKER}.asv_taxonomy_abundance.tsv  ASV, sequence, per-sample counts, taxonomy lineage
+│   └── {MARKER}.taxonomy_by_sequence.tsv    Taxonomy re-keyed by sequence — feeds ecology/{MARKER}/
 ├── tapirs/                            12S Tapirs branch (--tapirs.enabled true)
 │   ├── {experiment}_blast{id}_{method}.tsv           OTU table (BLAST route)
 │   ├── {experiment}_blast{id}_{method}_full_lineage.tsv
@@ -660,7 +671,13 @@ Default primers used by the pipeline. To use different primers, override `params
 : Set the missing `--tapirs.blast.db` / `--tapirs.kraken2.db` / `--tapirs.taxdump` / `--tapirs.experiment` (whichever the error names) — these aren't auto-downloaded like the other markers' databases, since they're large and institution-specific.
 
 **12S ecology output looks empty/placeholder**
-: Ecology needs `--sintax.enabled true` for 12S — with it left at the default `false`, 12S's per-sample taxonomy is a NO_FILE placeholder (12S's real taxonomy comes from the SINTAX branch, not the generic per-sample step) and downstream ecology has nothing to work with.
+: Ecology needs `--sintax.enabled true` for 12S — with it left at the default `false`, 12S never runs a taxonomy step at all (there's no generic `TAXONOMY`/`asv_taxonomy` output for 12S; its only taxonomy path is SINTAX) and downstream ecology has nothing to work with.
+
+**Other markers' ecology output (diversity/ordination/composition) looks empty/skipped**
+: Check that `--taxonomy`/the wiring is using `asv_taxonomy/{MARKER}/{MARKER}.taxonomy_by_sequence.tsv`, not `taxonomy/{MARKER}/{MARKER}.taxonomy.tsv`. The ecology modules intersect ASV table row names against taxonomy row names — a label-keyed vs. sequence-keyed mismatch produces zero overlap silently (a `skipped.txt: empty ASV table` file, not an error) even though both input files individually contain real data.
+
+**`TAXONOMY` process exceeded its running time limit**
+: The collective (post-merge) taxonomy step classifies every ASV for a marker in one task — this can be tens of thousands of ASVs for ITS/CO1 against large databases (UNITE, MIDORI2). It has a dedicated `withName: 'TAXONOMY'` override in `nextflow.config` (`cpus = params.cores`, `time = 48.h * task.attempt`) separate from the shared `process_high` ceiling, precisely because it needs both more threads and more time than other `process_high` steps. If it's still timing out, increase `--cores` or raise that override's `time` further.
 
 **OutOfMemoryError in DADA2 or taxonomy**
 : Increase `--max_memory` (e.g. `--max_memory 256.GB`) or set `process.memory` directly in a custom config.
@@ -669,7 +686,7 @@ Default primers used by the pipeline. To use different primers, override `params
 : Check the queue name in `nextflow.config` under `profiles.slurm`. Adjust `process.queue` to match your cluster's partition names.
 
 **Resuming a pipeline run**
-: Always use `-resume` when re-running after a failure. Nextflow caches completed process outputs in `work/` and skips them.
+: Always use `-resume` when re-running after a failure. Nextflow caches completed process outputs in `work/` and skips them. Bare `-resume` (no argument) resumes from the *most recent* run recorded in this directory — check `nextflow log` first if you've launched any other run (even a quick test/`-stub-run`) from the same project directory since the one you actually want to resume, since that would silently become the new "latest" and bare `-resume` would find no matching cache, re-running everything. Pass the specific run name or session ID explicitly (`-resume <name-or-session-id>`) to be certain: `nextflow run main.nf ... -resume distracted_darwin`.
 
 **Work directory getting large**
 : Clean up completed runs with `nextflow clean -f` or delete `work/` manually. Only do this once you no longer need to `-resume`.

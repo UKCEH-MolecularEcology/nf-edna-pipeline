@@ -254,6 +254,7 @@ process ECOLOGY_MULTIMARKER {
     colnames(comb_df) <- c("PC1","PC2")
     comb_df\$sample  <- rownames(comb_df)
 
+    first_cat <- NULL
     if (has_meta) {
         meta_sub <- meta[rownames(comb_df), , drop=FALSE]
         first_cat <- names(meta_sub)[sapply(meta_sub, function(x) is.character(x)||is.factor(x))][1]
