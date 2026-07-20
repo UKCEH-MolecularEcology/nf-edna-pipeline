@@ -17,10 +17,18 @@ process TAPIRS_BLAST {
     script:
     def prefix = "${meta.id}"
     def b = blast_opts
+    // blastn's own default -task is 'megablast' (tuned for near-identical
+    // matches), not the more sensitive 'blastn' task -- for divergent
+    // cross-species barcode matching (e.g. CO1 vs a broad reference like
+    // nt) megablast finds essentially nothing. Defaults to megablast here
+    // to keep 12S's already-working behavior unchanged; set blast.task in
+    // a marker's config to override.
+    def blast_task = b.task ?: 'megablast'
     """
     if [ -s ${nonchimeras} ]; then
         blastn -query ${nonchimeras} \\
             -db ${blast_db_dir}/${blast_db_prefix} \\
+            -task ${blast_task} \\
             -outfmt "6 qseqid stitle sacc staxids pident qcovs evalue bitscore" \\
             -perc_identity ${b.min_perc_ident} \\
             -evalue ${b.min_evalue} \\

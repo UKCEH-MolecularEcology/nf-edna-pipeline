@@ -3,11 +3,14 @@ include { TAPIRS_BLAST_LCA         } from '../../modules/local/tapirs_blast_lca/
 include { LCA_TO_TAXONOMY_TABLE    } from '../../modules/local/lca_to_taxonomy_table/main'
 include { TAPIRS_ASV_TAXONOMY_TABLE } from '../../modules/local/tapirs_asv_taxonomy_table/main'
 
-// CO1 BLAST + majority-vote-LCA against coidb, reusing the same TAPIRS_BLAST
-// / TAPIRS_BLAST_LCA modules 12S's Tapirs branch already uses -- pointed at
-// the collective, post-merge CO1 ASV set (not a raw-read vsearch OTU-
-// clustering front end, since coidb classification only needs a query
-// FASTA). Standalone output, mirrors 12S Tapirs: does NOT feed ecology.
+// CO1 BLAST + majority-vote-LCA against nt (NCBI Nucleotide collection),
+// reusing the same TAPIRS_BLAST / TAPIRS_BLAST_LCA modules 12S's Tapirs
+// branch already uses -- pointed at the collective, post-merge CO1 ASV set
+// (not a raw-read vsearch OTU-clustering front end, since BLAST classification
+// only needs a query FASTA). Standalone output, mirrors 12S Tapirs: does NOT
+// feed ecology. Uses the standard NCBI-taxid + taxdump lineage path (same as
+// 12S), since nt hits carry real taxids -- unlike coidb, which needed the
+// separate self-describing-header 'coidb' lineage mode.
 workflow TAPIRS_BLAST_LCA_CO1 {
 
     take:
@@ -29,8 +32,8 @@ workflow TAPIRS_BLAST_LCA_CO1 {
 
     TAPIRS_BLAST_LCA(
         TAPIRS_BLAST.out.blast_tsv,
-        file("${projectDir}/assets/NO_FILE"),   // no taxdump needed -- coidb headers are self-describing
-        'coidb',
+        file(tapirs_opts.taxdump),
+        'blast',
         tapirs_opts.mlca
     )
     ch_versions = ch_versions.mix(TAPIRS_BLAST_LCA.out.versions)
