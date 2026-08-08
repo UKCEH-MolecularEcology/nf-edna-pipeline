@@ -22,9 +22,9 @@ process ECOLOGY_BETA {
     #!/usr/bin/env Rscript
 
     # ── Package loading ──────────────────────────────────────────────────────
-    r_lib <- "${params.r_lib_cache}"
-    dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
-    .libPaths(c(r_lib, .libPaths()))
+    # All ship pre-installed and build-verified in this container image (see
+    # containers/ecology/Dockerfile) -- load directly, no runtime install,
+    # no shared cache (see ecology_alpha/main.nf for why that broke things).
     options(mc.cores = ${task.cpus})
     if (length(readLines("${asv_table}")) <= 1L) {
         dir.create("${marker}.beta_results", showWarnings=FALSE, recursive=TRUE)
@@ -32,41 +32,10 @@ process ECOLOGY_BETA {
         writeLines(c('"${task.process}":', '    skipped: empty ASV table'), "versions.yml")
         quit(status=0)
     }
-    .install_pkg <- function(pkg) {
-        if (requireNamespace(pkg, quietly=TRUE)) return(invisible(NULL))
-        install.packages(pkg, quiet=TRUE)
-        if (!requireNamespace(pkg, quietly=TRUE)) {
-            Sys.sleep(runif(1, 5, 15))
-            install.packages(pkg, quiet=TRUE, INSTALL_opts="--no-lock")
-        }
-    }
-
-    r_ver <- numeric_version(paste(R.version\$major, R.version\$minor, sep="."))
-    bioc_ver <- if (r_ver >= "4.5") "3.22" else if (r_ver >= "4.4") "3.20" else if (r_ver >= "4.3") "3.18" else "3.16"
-    options(repos = c(
-        BioCsoft = paste0("https://bioconductor.org/packages/", bioc_ver, "/bioc"),
-        BioCann  = paste0("https://bioconductor.org/packages/", bioc_ver, "/data/annotation"),
-        CRAN     = "https://cloud.r-project.org"
-    ))
-
-
-    required <- c("phyloseq", "vegan", "ggplot2", "dplyr", "tidyr")
-    # Cross-process mutex: see ecology_alpha/main.nf for rationale.
-    .lock_dir <- file.path(r_lib, ".install.lock")
-    .acquired <- FALSE
-    for (.i in 1:600) {
-        if (dir.create(.lock_dir, showWarnings = FALSE)) { .acquired <- TRUE; break }
-        Sys.sleep(1)
-    }
-    if (!.acquired) stop("Could not acquire R package install lock: ", .lock_dir)
-    # finally (not on.exit): see ecology_alpha/main.nf for rationale.
-    tryCatch({
-        invisible(lapply(required, .install_pkg))
-        suppressPackageStartupMessages({
-            library(phyloseq); library(vegan); library(ggplot2)
-            library(dplyr);    library(tidyr)
-        })
-    }, finally = { unlink(.lock_dir, recursive = TRUE) })
+    suppressPackageStartupMessages({
+        library(phyloseq); library(vegan); library(ggplot2)
+        library(dplyr);    library(tidyr)
+    })
 
     marker    <- "${marker}"
     meta_file <- ${meta_arg}

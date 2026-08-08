@@ -2,7 +2,7 @@ process ECOLOGY_DIFFERENTIAL {
     tag "diffabund_${marker}"
     label 'process_high'
 
-    container 'bioconductor/bioconductor_docker:RELEASE_3_18'
+    container 'ghcr.io/ukceh-molecularecology/nf-edna-pipeline/ecology:r4.3.3'
 
     publishDir "${params.outdir}/full_ecology/${marker}/04_differential_abundance", mode: 'copy'
 
@@ -24,9 +24,10 @@ process ECOLOGY_DIFFERENTIAL {
     """
     #!/usr/bin/env Rscript
 
-    r_lib <- "${params.r_lib_cache}"
-    dir.create(r_lib, showWarnings=FALSE, recursive=TRUE)
-    .libPaths(c(r_lib, .libPaths()))
+    # DESeq2/ALDEx2/ggplot2/dplyr/phyloseq all ship pre-installed and
+    # build-verified in this container image (see containers/ecology/Dockerfile)
+    # -- load directly, no shared cache (see ecology_alpha/main.nf for why
+    # that broke things).
     options(mc.cores = ${task.cpus})
     if (length(readLines("${asv_table}")) <= 1L) {
         dir.create("${marker}.diffabund_results", showWarnings=FALSE, recursive=TRUE)
@@ -34,42 +35,22 @@ process ECOLOGY_DIFFERENTIAL {
         writeLines(c('"${task.process}":', '    skipped: empty ASV table'), "versions.yml")
         quit(status=0)
     }
-    .install_pkg <- function(pkg) {
-        if (requireNamespace(pkg, quietly=TRUE)) return(invisible(NULL))
-        install.packages(pkg, quiet=TRUE)
-        if (!requireNamespace(pkg, quietly=TRUE)) {
-            Sys.sleep(runif(1, 5, 15))
-            install.packages(pkg, quiet=TRUE, INSTALL_opts="--no-lock")
-        }
+    suppressPackageStartupMessages({
+        library(DESeq2); library(ALDEx2); library(ggplot2)
+        library(dplyr);  library(phyloseq)
+    })
+
+    # ggrepel is the one package this image doesn't ship. Install it into a
+    # task-local library (tempdir, not shared across tasks or containers) --
+    # pure CRAN, no compiled system-library dependencies, so a per-task
+    # install is fast and can never race or cross-container-poison anything.
+    .local_lib <- file.path(tempdir(), "r_libs_local")
+    dir.create(.local_lib, showWarnings=FALSE, recursive=TRUE)
+    .libPaths(c(.local_lib, .libPaths()))
+    if (!requireNamespace("ggrepel", quietly=TRUE)) {
+        install.packages("ggrepel", lib=.local_lib, repos="https://cloud.r-project.org", quiet=TRUE)
     }
-
-    r_ver <- numeric_version(paste(R.version\$major, R.version\$minor, sep="."))
-    bioc_ver <- if (r_ver >= "4.5") "3.22" else if (r_ver >= "4.4") "3.20" else if (r_ver >= "4.3") "3.18" else "3.16"
-    options(repos = c(
-        BioCsoft = paste0("https://bioconductor.org/packages/", bioc_ver, "/bioc"),
-        BioCann  = paste0("https://bioconductor.org/packages/", bioc_ver, "/data/annotation"),
-        CRAN     = "https://cloud.r-project.org"
-    ))
-
-
-    pkgs <- c("DESeq2","ALDEx2","ggplot2","dplyr","tidyr","phyloseq",
-              "ggrepel","ComplexHeatmap")
-    # Cross-process mutex: see ecology_alpha/main.nf for rationale.
-    .lock_dir <- file.path(r_lib, ".install.lock")
-    .acquired <- FALSE
-    for (.i in 1:600) {
-        if (dir.create(.lock_dir, showWarnings = FALSE)) { .acquired <- TRUE; break }
-        Sys.sleep(1)
-    }
-    if (!.acquired) stop("Could not acquire R package install lock: ", .lock_dir)
-    # finally (not on.exit): see ecology_alpha/main.nf for rationale.
-    tryCatch({
-        invisible(lapply(pkgs, .install_pkg))
-        suppressPackageStartupMessages({
-            library(DESeq2); library(ALDEx2); library(ggplot2)
-            library(dplyr);  library(phyloseq); library(ggrepel)
-        })
-    }, finally = { unlink(.lock_dir, recursive = TRUE) })
+    suppressPackageStartupMessages(library(ggrepel))
 
     marker    <- "${marker}"
     meta_file <- ${meta_arg}
