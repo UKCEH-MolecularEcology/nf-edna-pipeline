@@ -57,16 +57,17 @@ process ECOLOGY_DIVERSITY {
         Sys.sleep(1)
     }
     if (!.acquired) stop("Could not acquire R package install lock: ", .lock_dir)
-    on.exit(unlink(.lock_dir, recursive = TRUE), add = TRUE)
-    invisible(lapply(pkgs, .install_pkg))
-    suppressPackageStartupMessages({
-        library(phyloseq)
-        library(vegan)
-        library(ggplot2)
-        library(dplyr)
-        library(tidyr)
-    })
-    unlink(.lock_dir, recursive = TRUE)
+    # finally (not on.exit): see ecology_alpha/main.nf for rationale.
+    tryCatch({
+        invisible(lapply(pkgs, .install_pkg))
+        suppressPackageStartupMessages({
+            library(phyloseq)
+            library(vegan)
+            library(ggplot2)
+            library(dplyr)
+            library(tidyr)
+        })
+    }, finally = { unlink(.lock_dir, recursive = TRUE) })
 
     marker    <- "${marker}"
     meta_file <- ${meta_arg}

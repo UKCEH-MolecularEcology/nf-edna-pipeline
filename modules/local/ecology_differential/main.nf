@@ -62,13 +62,14 @@ process ECOLOGY_DIFFERENTIAL {
         Sys.sleep(1)
     }
     if (!.acquired) stop("Could not acquire R package install lock: ", .lock_dir)
-    on.exit(unlink(.lock_dir, recursive = TRUE), add = TRUE)
-    invisible(lapply(pkgs, .install_pkg))
-    suppressPackageStartupMessages({
-        library(DESeq2); library(ALDEx2); library(ggplot2)
-        library(dplyr);  library(phyloseq); library(ggrepel)
-    })
-    unlink(.lock_dir, recursive = TRUE)
+    # finally (not on.exit): see ecology_alpha/main.nf for rationale.
+    tryCatch({
+        invisible(lapply(pkgs, .install_pkg))
+        suppressPackageStartupMessages({
+            library(DESeq2); library(ALDEx2); library(ggplot2)
+            library(dplyr);  library(phyloseq); library(ggrepel)
+        })
+    }, finally = { unlink(.lock_dir, recursive = TRUE) })
 
     marker    <- "${marker}"
     meta_file <- ${meta_arg}

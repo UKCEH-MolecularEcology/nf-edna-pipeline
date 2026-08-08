@@ -65,14 +65,18 @@ process ECOLOGY_ALPHA {
         Sys.sleep(1)
     }
     if (!.acquired) stop("Could not acquire R package install lock: ", .lock_dir)
-    on.exit(unlink(.lock_dir, recursive = TRUE), add = TRUE)
-    invisible(lapply(required, .install_pkg))
-    suppressPackageStartupMessages({
-        library(phyloseq); library(vegan);  library(ggplot2)
-        library(dplyr);    library(tidyr);  library(iNEXT)
-        library(cowplot);  library(microbiome)
-    })
-    unlink(.lock_dir, recursive = TRUE)
+    # finally (not on.exit): on.exit at top level of an Rscript is not
+    # reliably run when a later, unrelated, uncaught fatal error halts the
+    # whole script -- observed in practice leaving the lock orphaned.
+    # tryCatch's finally always runs when THIS block exits, success or not.
+    tryCatch({
+        invisible(lapply(required, .install_pkg))
+        suppressPackageStartupMessages({
+            library(phyloseq); library(vegan);  library(ggplot2)
+            library(dplyr);    library(tidyr);  library(iNEXT)
+            library(cowplot);  library(microbiome)
+        })
+    }, finally = { unlink(.lock_dir, recursive = TRUE) })
     has_dunn <- requireNamespace("dunn.test", quietly=TRUE)
 
     marker    <- "${marker}"

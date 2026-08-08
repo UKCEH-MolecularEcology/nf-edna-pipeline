@@ -48,13 +48,14 @@ process ECOLOGY_MULTIMARKER {
         Sys.sleep(1)
     }
     if (!.acquired) stop("Could not acquire R package install lock: ", .lock_dir)
-    on.exit(unlink(.lock_dir, recursive = TRUE), add = TRUE)
-    invisible(lapply(required, .install_pkg))
-    suppressPackageStartupMessages({
-        library(vegan); library(ggplot2); library(dplyr)
-        library(tidyr); library(cowplot)
-    })
-    unlink(.lock_dir, recursive = TRUE)
+    # finally (not on.exit): see ecology_alpha/main.nf for rationale.
+    tryCatch({
+        invisible(lapply(required, .install_pkg))
+        suppressPackageStartupMessages({
+            library(vegan); library(ggplot2); library(dplyr)
+            library(tidyr); library(cowplot)
+        })
+    }, finally = { unlink(.lock_dir, recursive = TRUE) })
 
     out_dir    <- "cross_marker_results"
     dir.create(out_dir, showWarnings=FALSE, recursive=TRUE)
