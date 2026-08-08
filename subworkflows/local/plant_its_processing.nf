@@ -1,3 +1,4 @@
+include { CUTADAPT                 } from '../../modules/local/cutadapt/main'
 include { HONEYPI_DOWNLOAD_DB      } from '../../modules/local/honeypi_download_db/main'
 include { HONEYPI_TRIM_GALORE      } from '../../modules/local/honeypi_trim_galore/main'
 include { HONEYPI_DADA2            } from '../../modules/local/honeypi_dada2/main'
@@ -24,13 +25,29 @@ include { HONEYPI_STANDARDIZE      } from '../../modules/local/honeypi_standardi
 workflow PLANT_ITS_PROCESSING {
 
     take:
-    ch_reads   // [ meta(id, marker, ...), [ r1, r2 ] ]
-    marker     // String, e.g. 'PITS'
+    ch_reads      // [ meta(id, marker, ...), [ r1, r2 ] ]
+    marker        // String, e.g. 'PITS'
+    marker_params // Map from loadMarkerParams('PITS') -- fwd/rev primer, length bounds
 
     main:
     ch_versions = Channel.empty()
 
-    ch_reads_sanitized = ch_reads.map { meta, reads ->
+    // ── Primer trimming (Cutadapt) -- honeypi's own Trim Galore step only
+    // does quality/length trimming, not PCR primer removal, unlike every
+    // other marker in this pipeline. Reuses the same CUTADAPT module.
+    ch_reads_with_primers = ch_reads.map { meta, reads ->
+        def new_meta = meta + [
+            fwd_primer: marker_params.fwd_primer,
+            rev_primer: marker_params.rev_primer,
+            min_length: marker_params.min_length,
+            max_length: marker_params.max_length
+        ]
+        [ new_meta, reads ]
+    }
+    CUTADAPT(ch_reads_with_primers)
+    ch_versions = ch_versions.mix(CUTADAPT.out.versions.first())
+
+    ch_reads_sanitized = CUTADAPT.out.reads.map { meta, reads ->
         def sano = (meta.id as String).replaceAll('_', '-').replaceAll(/-+$/, '')
         // Mirrors R's make.names(), which DADA2/data.frame apply to sample
         // (column) names: invalid leading char gets an 'X' prefix, hyphens
@@ -122,5 +139,6 @@ workflow PLANT_ITS_PROCESSING {
     merged_table         = HONEYPI_STANDARDIZE.out.merged_table          // [ marker, tsv ]
     taxonomy_for_ecology = HONEYPI_STANDARDIZE.out.taxonomy_by_sequence  // [ marker, tsv ]
     honeypi_counts       = HONEYPI_MERGE_DUPLICATES.out.counts
+    cutadapt_log         = CUTADAPT.out.log
     versions             = ch_versions
 }

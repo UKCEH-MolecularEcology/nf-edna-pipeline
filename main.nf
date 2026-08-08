@@ -287,7 +287,8 @@ workflow {
     // taxonomy-by-sequence table in the same shape those produce, joined
     // in below (ch_merged_tables_all / ch_taxonomy_by_marker).
     if (markers_list.contains('PITS')) {
-        PLANT_ITS_PROCESSING(ch_by_marker.pits, 'PITS')
+        PLANT_ITS_PROCESSING(ch_by_marker.pits, 'PITS', loadMarkerParams('PITS'))
+        ch_cutadapt_logs = ch_cutadapt_logs.mix(PLANT_ITS_PROCESSING.out.cutadapt_log)
     }
 
     // ── Merge per-sample ASV tables → per-marker combined table ───────────
