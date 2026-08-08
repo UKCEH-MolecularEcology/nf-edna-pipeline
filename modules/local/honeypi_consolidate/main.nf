@@ -2,7 +2,7 @@ process HONEYPI_CONSOLIDATE {
     tag "consolidate"
     label 'process_low'
 
-    container 'python:3.10-slim'
+    container 'ghcr.io/ukceh-molecularecology/nf-edna-pipeline/tapirs-python:1.0'
 
     publishDir "${params.outdir}/pits/consolidate", mode: 'copy'
 

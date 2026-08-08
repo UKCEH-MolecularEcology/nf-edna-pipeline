@@ -2,7 +2,7 @@ process HONEYPI_MERGE_DUPLICATES {
     tag "merge_duplicates"
     label 'process_low'
 
-    container 'python:3.10-slim'
+    container 'ghcr.io/ukceh-molecularecology/nf-edna-pipeline/tapirs-python:1.0'
 
     publishDir "${params.outdir}/pits/counts", mode: 'copy'
 

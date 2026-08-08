@@ -2,7 +2,7 @@ process HONEYPI_FILTER_ASV_TABLE {
     tag "filter_asv_table"
     label 'process_low'
 
-    container 'python:3.10-slim'
+    container 'ghcr.io/ukceh-molecularecology/nf-edna-pipeline/tapirs-python:1.0'
 
     publishDir "${params.outdir}/pits/counts", mode: 'copy'
 

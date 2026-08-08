@@ -2,7 +2,7 @@ process HONEYPI_DOWNLOAD_DB {
     tag "download_${its_region}_db"
     label 'process_low'
 
-    container 'python:3.10-slim'
+    container 'ghcr.io/ukceh-molecularecology/nf-edna-pipeline/tapirs-python:1.0'
 
     storeDir "${params.honeypi.rdp_db_cache}"
 

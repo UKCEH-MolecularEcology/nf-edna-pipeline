@@ -2,7 +2,7 @@ process HONEYPI_STANDARDIZE {
     tag "${marker}"
     label 'process_single'
 
-    container 'python:3.10-slim'
+    container 'ghcr.io/ukceh-molecularecology/nf-edna-pipeline/tapirs-python:1.0'
 
     publishDir "${params.outdir}/asv_taxonomy/${marker}", mode: 'copy'
 
