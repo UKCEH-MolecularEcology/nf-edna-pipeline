@@ -40,11 +40,21 @@ process ECOLOGY_MULTIMARKER {
 
     # ── Package loading ──────────────────────────────────────────────────────
     required <- c("vegan", "ggplot2", "dplyr", "tidyr", "cowplot")
+    # Cross-process mutex: see ecology_alpha/main.nf for rationale.
+    .lock_dir <- file.path(r_lib, ".install.lock")
+    .acquired <- FALSE
+    for (.i in 1:600) {
+        if (dir.create(.lock_dir, showWarnings = FALSE)) { .acquired <- TRUE; break }
+        Sys.sleep(1)
+    }
+    if (!.acquired) stop("Could not acquire R package install lock: ", .lock_dir)
+    on.exit(unlink(.lock_dir, recursive = TRUE), add = TRUE)
     invisible(lapply(required, .install_pkg))
     suppressPackageStartupMessages({
         library(vegan); library(ggplot2); library(dplyr)
         library(tidyr); library(cowplot)
     })
+    unlink(.lock_dir, recursive = TRUE)
 
     out_dir    <- "cross_marker_results"
     dir.create(out_dir, showWarnings=FALSE, recursive=TRUE)

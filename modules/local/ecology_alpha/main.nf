@@ -52,12 +52,27 @@ process ECOLOGY_ALPHA {
 
     required <- c("phyloseq","vegan","ggplot2","dplyr","tidyr","iNEXT",
                   "dunn.test","cowplot","microbiome")
+    # Cross-process mutex: every ECOLOGY_* module shares this same package
+    # library and Nextflow can schedule many different ECOLOGY_* process
+    # types concurrently (maxForks only limits concurrency within one
+    # process type, not across different ones) -- serialize install/load
+    # via an atomic dir.create() lock so concurrent tasks can't corrupt
+    # the shared cache.
+    .lock_dir <- file.path(r_lib, ".install.lock")
+    .acquired <- FALSE
+    for (.i in 1:600) {
+        if (dir.create(.lock_dir, showWarnings = FALSE)) { .acquired <- TRUE; break }
+        Sys.sleep(1)
+    }
+    if (!.acquired) stop("Could not acquire R package install lock: ", .lock_dir)
+    on.exit(unlink(.lock_dir, recursive = TRUE), add = TRUE)
     invisible(lapply(required, .install_pkg))
     suppressPackageStartupMessages({
         library(phyloseq); library(vegan);  library(ggplot2)
         library(dplyr);    library(tidyr);  library(iNEXT)
         library(cowplot);  library(microbiome)
     })
+    unlink(.lock_dir, recursive = TRUE)
     has_dunn <- requireNamespace("dunn.test", quietly=TRUE)
 
     marker    <- "${marker}"

@@ -45,8 +45,18 @@ process ECOLOGY_REPORT {
 
 
     pkgs <- c("rmarkdown","knitr","ggplot2","dplyr","kableExtra","DT")
+    # Cross-process mutex: see ecology_alpha/main.nf for rationale.
+    .lock_dir <- file.path(r_lib, ".install.lock")
+    .acquired <- FALSE
+    for (.i in 1:600) {
+        if (dir.create(.lock_dir, showWarnings = FALSE)) { .acquired <- TRUE; break }
+        Sys.sleep(1)
+    }
+    if (!.acquired) stop("Could not acquire R package install lock: ", .lock_dir)
+    on.exit(unlink(.lock_dir, recursive = TRUE), add = TRUE)
     invisible(lapply(pkgs, .install_pkg))
     library(rmarkdown)
+    unlink(.lock_dir, recursive = TRUE)
 
     marker    <- "${marker}"
     meta_file <- ${meta_arg}
