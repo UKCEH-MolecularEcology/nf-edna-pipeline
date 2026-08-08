@@ -3,12 +3,15 @@ nextflow.enable.dsl = 2
 
 /*
  * eDNA Metabarcoding Pipeline
- * Supports: 16S, 18S, ITS, CO1, 12S, RBCL
+ * Supports: 16S, 18S, ITS, CO1, 12S, RBCL, PITS (plant ITS2, via the honeypi
+ * subworkflow -- ported from https://github.com/UKCEH-MolecularEcology/nf-honeypi)
  * Raw reads → QC → Primer trimming → DADA2 denoising → Taxonomy → Ecology
  *
  * Input options (mutually exclusive):
  *   --input      Samplesheet CSV (sample, fastq_1, fastq_2, marker)
  *   --fastq_dir  Directory of FASTQ files; markers auto-detected from filenames
+ *                ('fITS' filename tokens map to fungal ITS/UNITE, 'pITS' tokens
+ *                route to the PITS/honeypi branch)
  */
 
 include { AMPLICON_QC                            } from './subworkflows/local/amplicon_qc'
@@ -26,6 +29,7 @@ include { COLLECTIVE_TAXONOMY as COLLECTIVE_TAXONOMY_18S  } from './subworkflows
 include { COLLECTIVE_TAXONOMY as COLLECTIVE_TAXONOMY_ITS  } from './subworkflows/local/collective_taxonomy'
 include { COLLECTIVE_TAXONOMY as COLLECTIVE_TAXONOMY_CO1  } from './subworkflows/local/collective_taxonomy'
 include { COLLECTIVE_TAXONOMY as COLLECTIVE_TAXONOMY_RBCL } from './subworkflows/local/collective_taxonomy'
+include { PLANT_ITS_PROCESSING                  } from './subworkflows/local/plant_its_processing'
 include { ECOLOGICAL_ANALYSIS                  } from './subworkflows/local/ecological_analysis'
 include { FULL_ECOLOGICAL_ANALYSIS             } from './subworkflows/local/full_ecological_analysis'
 include { MERGE_ASV_TABLES                     } from './modules/local/merge_asvtables/main'
@@ -36,7 +40,7 @@ include { SETUP_DATABASES                      } from './modules/local/setup_dat
 
 def checkParams() {
     // Defined inside the function so it is in scope for DSL2 method compilation
-    def valid_markers = ['16S', '18S', 'ITS', 'CO1', '12S', 'RBCL']
+    def valid_markers = ['16S', '18S', 'ITS', 'CO1', '12S', 'RBCL', 'PITS']
 
     if (!params.input && !params.fastq_dir) {
         error "Provide either --input (samplesheet CSV) or --fastq_dir (FASTQ directory)"
@@ -82,7 +86,11 @@ def parseFastqDir(fastq_dir) {
     // Defined inside the function so it is in scope for DSL2 method compilation
     def marker_aliases = [
         '16S': '16S', '18S': '18S', 'ITS': 'ITS', 'ITS1': 'ITS', 'ITS2': 'ITS',
-        'CO1': 'CO1', 'COI': 'CO1', '12S': '12S', 'RBCL': 'RBCL'
+        'CO1': 'CO1', 'COI': 'CO1', '12S': '12S', 'RBCL': 'RBCL',
+        // Fungal ITS (fITS) reuses the generic ITS/UNITE path; plant ITS
+        // (pITS) routes to PITS, processed by the honeypi subworkflow
+        // (different pipeline shape + a plant-specific RDP database).
+        'FITS': 'ITS', 'PITS': 'PITS'
     ]
 
     def dir = file(fastq_dir)
@@ -221,6 +229,7 @@ workflow {
             co1:  it[0].marker == 'CO1'
             s12:  it[0].marker == '12S'
             rbcl: it[0].marker == 'RBCL'
+            pits: it[0].marker == 'PITS'
         }
 
     ch_asv_tables    = Channel.empty()
@@ -269,6 +278,16 @@ workflow {
         ch_asv_tables    = ch_asv_tables.mix(AMPLICON_PROCESSING_RBCL.out.asv_table)
         ch_asv_seqs      = ch_asv_seqs.mix(AMPLICON_PROCESSING_RBCL.out.asv_seqs)
         ch_cutadapt_logs = ch_cutadapt_logs.mix(AMPLICON_PROCESSING_RBCL.out.cutadapt_log)
+    }
+
+    // PITS (plant ITS2): structurally its own pipeline (joint DADA2 +
+    // ITSx + RDP, ported from nf-honeypi) -- does not feed the generic
+    // per-sample AMPLICON_PROCESSING/MERGE_ASV_TABLES/COLLECTIVE_TAXONOMY
+    // path above. It emits an already-merged, sequence-keyed table plus a
+    // taxonomy-by-sequence table in the same shape those produce, joined
+    // in below (ch_merged_tables_all / ch_taxonomy_by_marker).
+    if (markers_list.contains('PITS')) {
+        PLANT_ITS_PROCESSING(ch_by_marker.pits, 'PITS')
     }
 
     // ── Merge per-sample ASV tables → per-marker combined table ───────────
@@ -349,7 +368,16 @@ workflow {
         ch_taxonomy_by_marker = ch_taxonomy_by_marker.mix(COLLECTIVE_TAXONOMY_RBCL.out.taxonomy_for_ecology)
     }
 
-    ch_ecology_input = MERGE_ASV_TABLES.out.merged_table
+    // PITS bypasses MERGE_ASV_TABLES/COLLECTIVE_TAXONOMY entirely (see
+    // dispatch above) but emits the same [ marker, tsv ] shapes directly,
+    // so it joins the ecology input alongside every other marker's output.
+    ch_merged_tables_all = MERGE_ASV_TABLES.out.merged_table
+    if (markers_list.contains('PITS')) {
+        ch_merged_tables_all = ch_merged_tables_all.mix(PLANT_ITS_PROCESSING.out.merged_table)
+        ch_taxonomy_by_marker = ch_taxonomy_by_marker.mix(PLANT_ITS_PROCESSING.out.taxonomy_for_ecology)
+    }
+
+    ch_ecology_input = ch_merged_tables_all
         .join(ch_taxonomy_by_marker, by: 0)
 
     // Filter to markers whose ecology is not disabled via --skip_ecology_markers

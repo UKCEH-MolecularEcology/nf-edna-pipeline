@@ -1,6 +1,6 @@
 # nf-edna-pipeline
 
-A Nextflow DSL2 pipeline for **multi-marker eDNA metabarcoding** — from raw paired-end reads to full ecological analysis. Supports **16S, 18S, ITS, CO1, 12S, and rbcL** primer sets in a single run.
+A Nextflow DSL2 pipeline for **multi-marker eDNA metabarcoding** — from raw paired-end reads to full ecological analysis. Supports **16S, 18S, ITS (incl. fungal fITS), CO1, 12S, rbcL, and plant ITS2 (PITS, via the honeypi subworkflow)** primer sets in a single run.
 
 ---
 
@@ -207,6 +207,47 @@ sequence, per-sample counts, taxonomy lineage, plus `lca_rank`/`lca_method`
 QC columns) and `CO1_blast.taxonomy_by_sequence.tsv` (sequence-keyed,
 matching the shape ecology would expect if you ever want to feed this in
 instead of the DADA2 result).
+
+---
+
+## PITS: plant ITS2 via honeypi (a structurally separate marker pipeline)
+
+Plant ITS2 (`PITS`; `pITS` in filenames) does **not** run through the generic
+per-sample `AMPLICON_PROCESSING`/`MERGE_ASV_TABLES`/`COLLECTIVE_TAXONOMY`
+path the other six markers share. It's routed to `PLANT_ITS_PROCESSING`, a
+subworkflow ported from
+[UKCEH-MolecularEcology/nf-honeypi](https://github.com/UKCEH-MolecularEcology/nf-honeypi),
+because honeypi denoises all samples **jointly** in one DADA2 call rather
+than per-sample/per-run — a different pipeline shape, not a drop-in swap of
+primers and a database.
+
+```
+Raw reads (all PITS samples)
+│
+├── Trim Galore (per sample)
+├── DADA2 (joint denoising across every sample at once)
+├── ITSx (extracts the ITS2 region; length-filters 100–700 bp by default)
+├── Consolidate (ITSx-extracted + non-ITSx-extracted sequences)
+├── RDP classify (Gweon ITS2 training set)
+├── Filter + merge-duplicate-taxonomy
+└── Standardize → sequence-keyed asv_id + taxonomy-by-sequence tables
+    (same shape as every other marker's output, so it joins the same
+    ecology step) + results/pits/honeypi_output/ (honeypi's native deliverable)
+```
+
+honeypi requires hyphen-only sample IDs internally; this pipeline's IDs are
+underscore-based (`1_B_0_NS`, etc). `PLANT_ITS_PROCESSING` sanitises IDs on
+the way in and restores the originals on the way out via a generated
+`sample_id_map.tsv` — you never need to rename anything yourself.
+
+Fungal ITS (`fITS` in filenames) is **not** part of this branch — it aliases
+to the generic `ITS`/UNITE path instead, since UNITE is fungal-specific and
+already correct for it.
+
+Config lives under `params.honeypi { ... }` (its_region, RDP confidence,
+DADA2 truncation lengths, database location) — see `nextflow.config`. The
+RDP database defaults to `${projectDir}/databases/rdp_db_ITS2`; if absent, it
+auto-downloads from the Gweon ITS2 training set URL on first run.
 
 ---
 
@@ -419,7 +460,7 @@ K9G-EA71_2024-rbcL_S503_R1_001.fastq.gz
 P8B-Blank2-SW-rbcL_S762_R2_001.fastq.gz
 ```
 
-The script detects the marker from the last `-`-delimited token before the Illumina suffix and recognises: `16S`, `18S`, `ITS`, `CO1`/`COI`, `12S`, `RBCL`.
+The script detects the marker from the last `-`-delimited token before the Illumina suffix and recognises: `16S`, `18S`, `ITS`/`fITS`, `CO1`/`COI`, `12S`, `RBCL`, `PITS`/`pITS`. `fITS` aliases to `ITS` (fungal/UNITE); `pITS` aliases to `PITS` (plant ITS2, honeypi subworkflow).
 
 **Generate samplesheet only:**
 ```bash
@@ -459,7 +500,7 @@ Create a comma-separated file with these columns:
 | `sample` | Yes | Sample identifier — no spaces or special characters |
 | `fastq_1` | Yes | Absolute path to R1 FASTQ file (gzipped) |
 | `fastq_2` | No | Absolute path to R2 FASTQ file (gzipped). Omit for single-end |
-| `marker` | Yes | One of: `16S`, `18S`, `ITS`, `CO1`, `12S`, `RBCL` |
+| `marker` | Yes | One of: `16S`, `18S`, `ITS`, `CO1`, `12S`, `RBCL`, `PITS` |
 | `run` | No | Sequencing run ID. Used to group error-model learning. Defaults to `run1` |
 
 **Example (`samplesheet.csv`):**

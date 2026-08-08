@@ -34,6 +34,10 @@ MARKER_ALIASES = {
     'COI':  'CO1',
     '12S':  '12S',
     'RBCL': 'RBCL',
+    # Fungal ITS (fITS) reuses the generic ITS/UNITE path; plant ITS (pITS)
+    # routes to PITS, processed by the honeypi subworkflow.
+    'FITS': 'ITS',
+    'PITS': 'PITS',
 }
 
 # Matches the Illumina suffix: _S<number>_R1/R2_001.fastq.gz
