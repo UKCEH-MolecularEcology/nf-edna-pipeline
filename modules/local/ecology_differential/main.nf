@@ -35,15 +35,18 @@ process ECOLOGY_DIFFERENTIAL {
         writeLines(c('"${task.process}":', '    skipped: empty ASV table'), "versions.yml")
         quit(status=0)
     }
-    suppressPackageStartupMessages({
-        library(DESeq2); library(ALDEx2); library(ggplot2)
-        library(dplyr);  library(phyloseq)
-    })
 
-    # ggrepel is the one package this image doesn't ship. Install it into a
-    # task-local library (tempdir, not shared across tasks or containers) --
-    # pure CRAN, no compiled system-library dependencies, so a per-task
-    # install is fast and can never race or cross-container-poison anything.
+    # ggrepel is the one package this image doesn't ship, and it must load
+    # BEFORE dplyr/ggplot2/phyloseq below: current CRAN ggrepel needs
+    # rlang >= 1.1.6, newer than this image's pre-baked rlang (1.1.3). Once
+    # dplyr/ggplot2 load the image's older rlang first, R won't swap it for
+    # a newer one afterward ("namespace already loaded") -- loading
+    # ggrepel's newer rlang first works fine the other way around, since
+    # dplyr/ggplot2 only require a lower minimum version, not an exact one.
+    # Installed into a task-local library (tempdir, not shared across tasks
+    # or containers) -- pure CRAN, no compiled system-library dependencies,
+    # so a per-task install is fast and can never cross-container-poison
+    # anything.
     .local_lib <- file.path(tempdir(), "r_libs_local")
     dir.create(.local_lib, showWarnings=FALSE, recursive=TRUE)
     .libPaths(c(.local_lib, .libPaths()))
@@ -51,6 +54,11 @@ process ECOLOGY_DIFFERENTIAL {
         install.packages("ggrepel", lib=.local_lib, repos="https://cloud.r-project.org", quiet=TRUE)
     }
     suppressPackageStartupMessages(library(ggrepel))
+
+    suppressPackageStartupMessages({
+        library(DESeq2); library(ALDEx2); library(ggplot2)
+        library(dplyr);  library(phyloseq)
+    })
 
     marker    <- "${marker}"
     meta_file <- ${meta_arg}
