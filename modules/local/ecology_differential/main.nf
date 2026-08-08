@@ -181,7 +181,10 @@ process ECOLOGY_DIFFERENTIAL {
 
     # ── DESeq2 ──────────────────────────────────────────────────────────
     message("Running DESeq2...")
-    asv_int <- round(asv_tab)
+    # as.matrix() first: storage.mode<- only works on matrices/atomic
+    # vectors, not data.frames (a data.frame is a list under the hood) --
+    # and DESeqDataSetFromMatrix() below wants a real matrix anyway.
+    asv_int <- round(as.matrix(asv_tab))
     storage.mode(asv_int) <- "integer"
 
     dds <- tryCatch({
