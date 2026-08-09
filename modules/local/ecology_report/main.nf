@@ -54,7 +54,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk\\$set(echo=FALSE, warning=FALSE, message=FALSE,
+knitr::opts_chunk\$set(echo=FALSE, warning=FALSE, message=FALSE,
                         fig.align="center", out.width="100%")
 library(knitr); library(dplyr)
 marker <- "', marker, '"
