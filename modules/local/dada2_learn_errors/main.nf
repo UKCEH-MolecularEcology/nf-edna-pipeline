@@ -16,8 +16,10 @@ process DADA2_LEARN_ERRORS {
 
     output:
     tuple val(run_id), path('error_model_fwd.rds'), path('error_model_rev.rds'), emit: error_model
-    path '*.png',                                                                 emit: plots
-    path 'versions.yml',                                                         emit: versions
+    tuple val(run_id), path('*.filtered.fastq.gz'),                              emit: filtered_reads
+    tuple val(run_id), path('filter_stats.tsv'),                                 emit: filter_stats
+    path '*.png',                                                                emit: plots
+    path 'versions.yml',                                                        emit: versions
 
     script:
     def pe          = metas[0].single_end ? 'FALSE' : 'TRUE'
@@ -43,6 +45,10 @@ process DADA2_LEARN_ERRORS {
         fwd_filter <- gsub("trimmed", "filtered", fwd_files)
         rev_filter <- gsub("trimmed", "filtered", rev_files)
 
+        # Filter every sample in the run ONCE, here -- DADA2_DENOISE reuses
+        # these same filtered files directly rather than re-filtering
+        # per-sample (that redundant second pass used to double the total
+        # filtering work across the whole run for no benefit).
         out <- filterAndTrim(
             fwd_files, fwd_filter,
             rev_files, rev_filter,
@@ -59,12 +65,17 @@ process DADA2_LEARN_ERRORS {
         )
         message("Filter results (fwd):"); print(out)
 
+        write.table(data.frame(file = basename(rownames(out)), out, row.names = NULL),
+                    "filter_stats.tsv", sep = "\\t", quote = FALSE, row.names = FALSE)
+
         # Keep only samples with reads after filtering
         fwd_passed <- fwd_filter[file.exists(fwd_filter) & file.info(fwd_filter)\$size > 0]
         rev_passed <- rev_filter[file.exists(rev_filter) & file.info(rev_filter)\$size > 0]
 
-        err_fwd <- learnErrors(fwd_passed, multithread = ${task.cpus}, randomize = TRUE)
-        err_rev <- learnErrors(rev_passed, multithread = ${task.cpus}, randomize = TRUE)
+        # multithread=TRUE (not randomize=TRUE, not dropped): matches the
+        # reference DADA2 big-data workflow's own learnErrors() call exactly.
+        err_fwd <- learnErrors(fwd_passed, multithread = ${task.cpus})
+        err_rev <- learnErrors(rev_passed, multithread = ${task.cpus})
 
     } else {
         fwd_filter <- gsub("trimmed", "filtered", all_files)
@@ -77,8 +88,11 @@ process DADA2_LEARN_ERRORS {
             compress    = TRUE,
             multithread = ${task.cpus}
         )
+        write.table(data.frame(file = basename(rownames(out)), out, row.names = NULL),
+                    "filter_stats.tsv", sep = "\\t", quote = FALSE, row.names = FALSE)
+
         fwd_passed <- fwd_filter[file.exists(fwd_filter) & file.info(fwd_filter)\$size > 0]
-        err_fwd <- learnErrors(fwd_passed, multithread = ${task.cpus}, randomize = TRUE)
+        err_fwd <- learnErrors(fwd_passed, multithread = ${task.cpus})
         err_rev <- err_fwd  # Placeholder for SE
     }
 
@@ -111,6 +125,9 @@ process DADA2_LEARN_ERRORS {
     touch error_model_fwd.rds
     touch error_model_rev.rds
     touch error_models.png
+    touch dummy_R1.filtered.fastq.gz
+    touch dummy_R2.filtered.fastq.gz
+    printf "file\treads.in\treads.out\n" > filter_stats.tsv
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

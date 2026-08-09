@@ -49,21 +49,22 @@ workflow AMPLICON_PROCESSING {
     )
     ch_versions = ch_versions.mix(DADA2_LEARN_ERRORS.out.versions.first())
 
-    // 3. Denoise: sample inference + merge paired reads + make ASV table
+    // 3. Denoise: sample inference + merge paired reads + make ASV table.
+    // Reuses the files DADA2_LEARN_ERRORS already filtered for the whole
+    // run (filtering every sample twice -- once collectively there, once
+    // again per-sample here -- used to double the total filtering work).
     ch_denoise_input = CUTADAPT.out.reads
         .map { meta, reads ->
             def run_id = meta.run ?: 'run1'
             [ run_id, meta, reads ]
         }
-        .combine(DADA2_LEARN_ERRORS.out.error_model, by: 0)
+        .combine(DADA2_LEARN_ERRORS.out.error_model,    by: 0)
+        .combine(DADA2_LEARN_ERRORS.out.filtered_reads, by: 0)
+        .combine(DADA2_LEARN_ERRORS.out.filter_stats,   by: 0)
 
     DADA2_DENOISE(
         ch_denoise_input,
         marker,
-        marker_params.trunc_len_f,
-        marker_params.trunc_len_r,
-        marker_params.max_ee_f,
-        marker_params.max_ee_r,
         params.dada2_pool,
         marker_params.min_length,
         marker_params.max_length
