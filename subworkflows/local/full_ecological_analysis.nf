@@ -105,8 +105,19 @@ workflow FULL_ECOLOGICAL_ANALYSIS {
         .join(ECOLOGY_INDICATORS.out.results,      by: 0)
         .join(ECOLOGY_ENVFIT.out.results,          by: 0)
 
+    // Barrier: without this, a fast marker's report can render (and its
+    // task can fail, e.g. an untriggered bug in the report script itself)
+    // well before a slower marker has even finished DADA2, long before its
+    // own ASV/taxonomy tables or ecology results exist. collect(flat: false)
+    // waits for every marker's report inputs to arrive, keeping each one's
+    // tuple intact (plain collect() would flatten all markers' items into
+    // one scalar soup), then flatMap re-emits them individually -- so
+    // reporting only starts once every marker is fully ready, not as each
+    // one races in.
     ch_report_input
         .join(ch_ecology_input.map { m, a, t -> [m, a, t] }, by: 0)
+        .collect(flat: false)
+        .flatMap { it }
         .multiMap { m, alpha, beta, ord, net, ind, env, asv, tax ->
             dirs: [m, alpha, beta, ord, net, ind, env]
             asv:  asv
