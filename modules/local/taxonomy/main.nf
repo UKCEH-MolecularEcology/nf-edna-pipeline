@@ -24,7 +24,12 @@ process TAXONOMY {
     path 'versions.yml',                       emit: versions
 
     script:
-    def prefix = "${marker}"
+    // dada2-method calls are split into many chunks by collective_taxonomy.nf
+    // (see params.tax_chunk_size) -- suffix with task.index so each chunk's
+    // output filename is unique once they all land in MERGE_TAXONOMY_CHUNKS'
+    // work dir together. rdp/blast run as one task on the whole merged
+    // FASTA, so keep their plain marker-only filename.
+    def prefix = (tax_method == 'dada2') ? "${marker}_${task.index}" : "${marker}"
 
     if (tax_method == 'rdp') {
         def rdp_xmx  = params.rdp_mem       ?: '8g'
@@ -201,7 +206,7 @@ process TAXONOMY {
     }
 
     stub:
-    def prefix = "${marker}"
+    def prefix = (tax_method == 'dada2') ? "${marker}_${task.index}" : "${marker}"
     """
     touch ${prefix}.taxonomy.tsv
 
