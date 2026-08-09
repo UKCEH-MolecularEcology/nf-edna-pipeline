@@ -1,4 +1,5 @@
 include { CUTADAPT           } from '../../modules/local/cutadapt/main'
+include { DADA2_FILTER       } from '../../modules/local/dada2_filter/main'
 include { DADA2_LEARN_ERRORS } from '../../modules/local/dada2_learn_errors/main'
 include { DADA2_DENOISE      } from '../../modules/local/dada2_denoise/main'
 include { VSEARCH_CHIMERA    } from '../../modules/local/vsearch_chimera/main'
@@ -26,41 +27,60 @@ workflow AMPLICON_PROCESSING {
     CUTADAPT(ch_reads_with_primers)
     ch_versions = ch_versions.mix(CUTADAPT.out.versions.first())
 
-    // 2. Learn DADA2 error models per run (group samples by sequencing run)
-    // If no run_id in meta, treat all samples as one run
-    ch_trimmed_by_run = CUTADAPT.out.reads
-        .map { meta, reads ->
-            def run_id = meta.run ?: 'run1'
-            [ run_id, meta, reads instanceof List ? reads : [reads] ]
-        }
-        .groupTuple(by: 0)
-        .map { run_id, metas, reads_list ->
-            // flatten [[R1,R2],[R1,R2],...] → [R1,R2,R1,R2,...] for path staging
-            [ run_id, metas, reads_list.flatten() ]
-        }
+    // 2. Filter each sample independently, as its own Nextflow task --
+    // real parallelism across samples (separate OS processes), unlike
+    // relying on filterAndTrim's own multithread param, which parallelises
+    // by forking (mclapply) across the files handed to ONE call. Forking
+    // has nothing to gain once filtering already happens one sample at a
+    // time, and (separately) fork-based parallelism was confirmed to give
+    // no speedup at all in this container.
+    ch_filter_input = CUTADAPT.out.reads.map { meta, reads ->
+        def run_id = meta.run ?: 'run1'
+        [ run_id, meta, reads ]
+    }
 
-    DADA2_LEARN_ERRORS(
-        ch_trimmed_by_run,
+    DADA2_FILTER(
+        ch_filter_input,
         marker,
         marker_params.trunc_len_f,
         marker_params.trunc_len_r,
         marker_params.max_ee_f,
         marker_params.max_ee_r
     )
+    ch_versions = ch_versions.mix(DADA2_FILTER.out.versions.first())
+
+    // 3. Learn DADA2 error models per run, from the already-filtered reads
+    // (group by run so every sample in a sequencing run contributes to one
+    // shared error model, same as before).
+    ch_filtered_by_run = DADA2_FILTER.out.filtered
+        .map { run_id, meta, filtered -> [ run_id, meta, filtered instanceof List ? filtered : [filtered] ] }
+        .groupTuple(by: 0)
+        .map { run_id, metas, filtered_list -> [ run_id, metas, filtered_list.flatten() ] }
+
+    DADA2_LEARN_ERRORS(
+        ch_filtered_by_run,
+        marker
+    )
     ch_versions = ch_versions.mix(DADA2_LEARN_ERRORS.out.versions.first())
 
-    // 3. Denoise: sample inference + merge paired reads + make ASV table.
-    // Reuses the files DADA2_LEARN_ERRORS already filtered for the whole
-    // run (filtering every sample twice -- once collectively there, once
-    // again per-sample here -- used to double the total filtering work).
-    ch_denoise_input = CUTADAPT.out.reads
-        .map { meta, reads ->
-            def run_id = meta.run ?: 'run1'
-            [ run_id, meta, reads ]
-        }
-        .combine(DADA2_LEARN_ERRORS.out.error_model,    by: 0)
-        .combine(DADA2_LEARN_ERRORS.out.filtered_reads, by: 0)
-        .combine(DADA2_LEARN_ERRORS.out.filter_stats,   by: 0)
+    // 4. Denoise: sample inference + merge paired reads + make ASV table.
+    // Reuses each sample's own DADA2_FILTER output directly -- no
+    // re-filtering here.
+    ch_all_filtered_by_run = DADA2_FILTER.out.filtered
+        .map { run_id, meta, filtered -> [ run_id, filtered instanceof List ? filtered : [filtered] ] }
+        .groupTuple(by: 0)
+        .map { run_id, filtered_list -> [ run_id, filtered_list.flatten() ] }
+
+    ch_all_stats_by_run = DADA2_FILTER.out.stats
+        .map { run_id, meta, stats -> [ run_id, stats instanceof List ? stats : [stats] ] }
+        .groupTuple(by: 0)
+        .map { run_id, stats_list -> [ run_id, stats_list.flatten() ] }
+
+    ch_denoise_input = DADA2_FILTER.out.filtered
+        .map { run_id, meta, filtered -> [ run_id, meta ] }
+        .combine(DADA2_LEARN_ERRORS.out.error_model, by: 0)
+        .combine(ch_all_filtered_by_run,             by: 0)
+        .combine(ch_all_stats_by_run,                by: 0)
 
     DADA2_DENOISE(
         ch_denoise_input,
@@ -71,7 +91,7 @@ workflow AMPLICON_PROCESSING {
     )
     ch_versions = ch_versions.mix(DADA2_DENOISE.out.versions.first())
 
-    // 4. Chimera detection and removal (VSEARCH de novo + reference)
+    // 5. Chimera detection and removal (VSEARCH de novo + reference)
     VSEARCH_CHIMERA(
         DADA2_DENOISE.out.asv_seqs,
         marker

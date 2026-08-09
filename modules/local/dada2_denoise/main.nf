@@ -7,7 +7,7 @@ process DADA2_DENOISE {
     publishDir "${params.outdir}/dada2/${marker}/asv_tables", mode: 'copy'
 
     input:
-    tuple val(run_id), val(meta), path(reads), path(err_fwd), path(err_rev), path(all_filtered), path(filter_stats)
+    tuple val(run_id), val(meta), path(err_fwd), path(err_rev), path(all_filtered), path(filter_stats)
     val marker
     val pool
     val min_length
@@ -37,19 +37,21 @@ process DADA2_DENOISE {
     err_fwd <- readRDS("${err_fwd}")
     err_rev <- readRDS("${err_rev}")
 
-    # Reuse the files DADA2_LEARN_ERRORS already filtered for the whole run
-    # (filtering every sample twice -- once collectively there, once again
-    # per-sample here -- doubled the total filtering work for no benefit).
-    filter_stats <- read.table("${filter_stats}", sep = "\\t", header = TRUE, check.names = FALSE)
-    stats_row <- function(fname) {
-        r <- filter_stats[filter_stats\$file == fname, , drop = FALSE]
+    # Reuse the files DADA2_FILTER already filtered for this sample (its own
+    # Nextflow task, run in parallel with every other sample) instead of
+    # re-filtering here -- each sample's stats live in its own one-row TSV,
+    # staged alongside every other sample's in this run.
+    stats_row <- function() {
+        f <- paste0(sample_id, "_", marker, ".filter_stats.tsv")
+        if (!file.exists(f)) return(NULL)
+        r <- read.table(f, sep = "\\t", header = TRUE, check.names = FALSE)
         if (nrow(r) == 1) r else NULL
     }
 
     if (paired_end) {
         fwd_ok <- paste0(sample_id, "_", marker, "_R1.filtered.fastq.gz")
         rev_ok <- paste0(sample_id, "_", marker, "_R2.filtered.fastq.gz")
-        fwd_row <- stats_row(sub("filtered", "trimmed", fwd_ok))
+        fwd_row <- stats_row()
         n_input <- if (!is.null(fwd_row)) fwd_row\$reads.in else NA_integer_
 
         if (!file.exists(fwd_ok) || !file.exists(rev_ok) ||
@@ -101,7 +103,7 @@ process DADA2_DENOISE {
 
     } else {
         fwd_ok  <- paste0(sample_id, "_", marker, "_R1.filtered.fastq.gz")
-        fwd_row <- stats_row(sub("filtered", "trimmed", fwd_ok))
+        fwd_row <- stats_row()
         n_input <- if (!is.null(fwd_row)) fwd_row\$reads.in else NA_integer_
 
         if (!file.exists(fwd_ok) || file.info(fwd_ok)\$size == 0) {

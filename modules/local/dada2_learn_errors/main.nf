@@ -7,91 +7,43 @@ process DADA2_LEARN_ERRORS {
     publishDir "${params.outdir}/dada2/${marker}/error_models", mode: 'copy'
 
     input:
-    tuple val(run_id), val(metas), path(reads)
+    tuple val(run_id), val(metas), path(filtered_reads)
     val marker
-    val trunc_len_f
-    val trunc_len_r
-    val max_ee_f
-    val max_ee_r
 
     output:
     tuple val(run_id), path('error_model_fwd.rds'), path('error_model_rev.rds'), emit: error_model
-    tuple val(run_id), path('*.filtered.fastq.gz'),                              emit: filtered_reads
-    tuple val(run_id), path('filter_stats.tsv'),                                 emit: filter_stats
     path '*.png',                                                                emit: plots
     path 'versions.yml',                                                        emit: versions
 
     script:
-    def pe          = metas[0].single_end ? 'FALSE' : 'TRUE'
-    def trunc_f_arg = trunc_len_f > 0 ? trunc_len_f : 0
-    def trunc_r_arg = trunc_len_r > 0 ? trunc_len_r : 0
+    def pe = metas[0].single_end ? 'FALSE' : 'TRUE'
     """
     #!/usr/bin/env Rscript
     library(dada2)
 
-    paired_end  <- as.logical("${pe}")
-    trunc_len_f <- as.integer("${trunc_f_arg}")
-    trunc_len_r <- as.integer("${trunc_r_arg}")
-    max_ee_f    <- as.numeric("${max_ee_f}")
-    max_ee_r    <- as.numeric("${max_ee_r}")
+    paired_end <- as.logical("${pe}")
 
-    # Collect all trimmed read files for this run
-    all_files <- list.files(".", pattern = "\\\\.trimmed\\\\.fastq\\\\.gz\$", full.names = TRUE)
+    # Samples were already filtered per-sample by DADA2_FILTER (each its own
+    # Nextflow task -- real parallelism across samples, unlike relying on
+    # filterAndTrim's own multithread param, which forks via mclapply and
+    # has nothing to fork over once filtering happens one sample at a time).
+    all_filtered <- list.files(".", pattern = "\\\\.filtered\\\\.fastq\\\\.gz\$", full.names = TRUE)
 
     if (paired_end) {
-        fwd_files <- sort(all_files[grepl("_R1", all_files)])
-        rev_files <- sort(all_files[grepl("_R2", all_files)])
+        fwd_filter <- sort(all_filtered[grepl("_R1", all_filtered)])
+        rev_filter <- sort(all_filtered[grepl("_R2", all_filtered)])
 
-        fwd_filter <- gsub("trimmed", "filtered", fwd_files)
-        rev_filter <- gsub("trimmed", "filtered", rev_files)
-
-        # Filter every sample in the run ONCE, here -- DADA2_DENOISE reuses
-        # these same filtered files directly rather than re-filtering
-        # per-sample (that redundant second pass used to double the total
-        # filtering work across the whole run for no benefit).
-        out <- filterAndTrim(
-            fwd_files, fwd_filter,
-            rev_files, rev_filter,
-            truncLen    = c(
-                ifelse(trunc_len_f > 0, trunc_len_f, 0),
-                ifelse(trunc_len_r > 0, trunc_len_r, 0)
-            ),
-            maxEE       = c(max_ee_f, max_ee_r),
-            truncQ      = 2,
-            minLen      = 50,
-            rm.phix     = TRUE,
-            compress    = TRUE,
-            multithread = ${task.cpus}
-        )
-        message("Filter results (fwd):"); print(out)
-
-        write.table(data.frame(file = basename(rownames(out)), out, row.names = NULL),
-                    "filter_stats.tsv", sep = "\\t", quote = FALSE, row.names = FALSE)
-
-        # Keep only samples with reads after filtering
         fwd_passed <- fwd_filter[file.exists(fwd_filter) & file.info(fwd_filter)\$size > 0]
         rev_passed <- rev_filter[file.exists(rev_filter) & file.info(rev_filter)\$size > 0]
 
-        # multithread=TRUE (not randomize=TRUE, not dropped): matches the
-        # reference DADA2 big-data workflow's own learnErrors() call exactly.
+        # multithread=TRUE: matches the reference DADA2 big-data workflow's
+        # own learnErrors() call exactly (no randomize -- that isn't in the
+        # reference call either, and defaults to FALSE).
         err_fwd <- learnErrors(fwd_passed, multithread = ${task.cpus})
         err_rev <- learnErrors(rev_passed, multithread = ${task.cpus})
 
     } else {
-        fwd_filter <- gsub("trimmed", "filtered", all_files)
-        out <- filterAndTrim(
-            all_files, fwd_filter,
-            maxEE       = max_ee_f,
-            truncQ      = 2,
-            minLen      = 50,
-            rm.phix     = TRUE,
-            compress    = TRUE,
-            multithread = ${task.cpus}
-        )
-        write.table(data.frame(file = basename(rownames(out)), out, row.names = NULL),
-                    "filter_stats.tsv", sep = "\\t", quote = FALSE, row.names = FALSE)
-
-        fwd_passed <- fwd_filter[file.exists(fwd_filter) & file.info(fwd_filter)\$size > 0]
+        fwd_passed <- all_filtered[file.exists(all_filtered) & file.info(all_filtered)\$size > 0]
         err_fwd <- learnErrors(fwd_passed, multithread = ${task.cpus})
         err_rev <- err_fwd  # Placeholder for SE
     }
@@ -125,9 +77,6 @@ process DADA2_LEARN_ERRORS {
     touch error_model_fwd.rds
     touch error_model_rev.rds
     touch error_models.png
-    touch dummy_R1.filtered.fastq.gz
-    touch dummy_R2.filtered.fastq.gz
-    printf "file\treads.in\treads.out\n" > filter_stats.tsv
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
