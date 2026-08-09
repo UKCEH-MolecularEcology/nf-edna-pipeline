@@ -125,13 +125,18 @@ process ECOLOGY_NETWORK {
 
     # Node attributes (taxonomy)
     # betweenness()/closeness() are shortest-path algorithms and require
-    # positive weights interpreted as distances -- E(g)'s weight attr is the signed
-    # Spearman correlation (can be negative for "negative" association
-    # edges), which igraph would otherwise pick up implicitly and reject.
-    # Convert to a distance where stronger correlation (either sign) means a
-    # shorter path, matching the |weight| convention already used for edge
-    # width in the plot below.
-    dist_weight       <- 1 - abs(E(g)\$weight)
+    # STRICTLY POSITIVE weights interpreted as distances -- E(g)'s weight attr
+    # is the signed Spearman correlation (can be negative for "negative"
+    # association edges), which igraph would otherwise pick up implicitly
+    # and reject. Convert to a distance where stronger correlation (either
+    # sign) means a shorter path, matching the |weight| convention already
+    # used for edge width in the plot below. cor_mat itself is never clamped
+    # away from +-1 (only the separate cor_clamped copy used for the p-value
+    # calculation above is), so a perfect |correlation|==1 edge -- plausible
+    # with a small ASV/sample count, e.g. two ASVs sharing an identical rank
+    # order across samples -- yields a distance of exactly 0, which igraph
+    # rejects as non-positive. Floor it just above zero instead.
+    dist_weight       <- pmax(1 - abs(E(g)\$weight), 1e-6)
     V(g)\$degree      <- degree(g)
     V(g)\$betweenness <- betweenness(g, weights=dist_weight, normalized=TRUE)
     V(g)\$closeness   <- closeness(g, weights=dist_weight, normalized=TRUE)
